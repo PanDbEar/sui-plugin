@@ -320,16 +320,16 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
 
     if (!group.isCreated)
     {
-        uint32_t estimatedSize = group.estimatedSize;
+        const uint32_t authorizedSize = (group.estimatedSize == 0 ? 1 : group.estimatedSize);
         std::string cbCreate = group.cbCreate;
 
         // EnsureCapacity may invoke eviction callbacks that mutate player/group containers.
-        if (!EnsureCapacity(*ctx, estimatedSize))
+        if (!EnsureCapacity(*ctx, authorizedSize))
         {
             Debug("ShowGroup failed: not enough capacity playerid=%d group=%s required=%u",
                 playerId,
                 groupName.c_str(),
-                estimatedSize
+                authorizedSize
             );
 
             // Safely clear callback recursion flag on reacquired group
@@ -383,14 +383,28 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
 
         if (createSuccess)
         {
-            postGroup.isCreated = true;
-            AddActiveTextDrawCount(*postCtx, postGroup.estimatedSize);
-
-            Debug("Create callback success playerid=%d group=%s activeTD=%u",
-                playerId,
-                groupName.c_str(),
-                postCtx->activeTextDrawCount
-            );
+            // Lock size to authorizedSize and add to accounting
+            postGroup.estimatedSize = authorizedSize;
+            if (TryAddActiveTextDrawCount(*postCtx, authorizedSize))
+            {
+                postGroup.isCreated = true;
+                Debug("Create callback success playerid=%d group=%s activeTD=%u",
+                    playerId,
+                    groupName.c_str(),
+                    postCtx->activeTextDrawCount
+                );
+            }
+            else
+            {
+                Debug("Create callback accounting failed playerid=%d group=%s activeTD=%u add=%u",
+                    playerId,
+                    groupName.c_str(),
+                    postCtx->activeTextDrawCount,
+                    authorizedSize
+                );
+                postGroup.isExecutingCallback = false;
+                return;
+            }
         }
         else
         {
@@ -688,20 +702,36 @@ void SUICore::ResetPlayer(int playerId)
     Debug("ResetPlayer finished playerid=%d", playerId);
 }
 
-void SUICore::SetGroupSize(int playerId, const std::string& groupName, uint32_t size)
+bool SUICore::SetGroupSize(int playerId, const std::string& groupName, uint32_t size)
 {
     auto* ctx = GetPlayerContext(playerId);
     if (!ctx)
     {
         Debug("SetGroupSize failed: player context not found playerid=%d group=%s", playerId, groupName.c_str());
-        return;
+        return false;
     }
 
     auto it = ctx->groups.find(groupName);
     if (it == ctx->groups.end())
     {
         Debug("SetGroupSize failed: group not found playerid=%d group=%s", playerId, groupName.c_str());
-        return;
+        return false;
+    }
+
+    auto& group = it->second;
+
+    if (group.isExecutingCallback)
+    {
+        Debug("SetGroupSize rejected: group is executing callback playerid=%d group=%s",
+            playerId, groupName.c_str());
+        return false;
+    }
+
+    if (group.isCreated)
+    {
+        Debug("SetGroupSize rejected: group is already created playerid=%d group=%s",
+            playerId, groupName.c_str());
+        return false;
     }
 
     if (size == 0)
@@ -709,9 +739,10 @@ void SUICore::SetGroupSize(int playerId, const std::string& groupName, uint32_t 
         size = 1;
     }
 
-    it->second.estimatedSize = size;
+    group.estimatedSize = size;
 
     Debug("SetGroupSize playerid=%d group=%s size=%u", playerId, groupName.c_str(), size);
+    return true;
 }
 
 uint32_t SUICore::GetActiveTextDrawCount(int playerId)
@@ -725,9 +756,30 @@ uint32_t SUICore::GetActiveTextDrawCount(int playerId)
     return it->second.activeTextDrawCount;
 }
 
+bool SUICore::TryAddActiveTextDrawCount(PlayerContext& ctx, uint32_t amount)
+{
+    uint64_t sum = static_cast<uint64_t>(ctx.activeTextDrawCount) + static_cast<uint64_t>(amount);
+    if (sum > static_cast<uint64_t>(UINT32_MAX))
+    {
+        Debug("[SUI] Capacity invariant violation: activeTextDrawCount overflow playerid=%d active=%u add=%u",
+            ctx.playerId, ctx.activeTextDrawCount, amount);
+        return false;
+    }
+
+    ctx.activeTextDrawCount = static_cast<uint32_t>(sum);
+
+    if (ctx.activeTextDrawCount > ctx.maxTextDraws)
+    {
+        Debug("[SUI] Capacity invariant diagnostic: active exceeds maxTextDraws playerid=%d active=%u max=%u",
+            ctx.playerId, ctx.activeTextDrawCount, ctx.maxTextDraws);
+    }
+
+    return true;
+}
+
 void SUICore::AddActiveTextDrawCount(PlayerContext& ctx, uint32_t amount)
 {
-    ctx.activeTextDrawCount += amount;
+    TryAddActiveTextDrawCount(ctx, amount);
 }
 
 void SUICore::SubtractActiveTextDrawCount(PlayerContext& ctx, uint32_t amount)
@@ -738,6 +790,8 @@ void SUICore::SubtractActiveTextDrawCount(PlayerContext& ctx, uint32_t amount)
     }
     else
     {
+        Debug("[SUI] Capacity invariant violation: underflow subtraction playerid=%d active=%u subtract=%u",
+            ctx.playerId, ctx.activeTextDrawCount, amount);
         ctx.activeTextDrawCount = 0;
     }
 }
@@ -852,7 +906,9 @@ bool SUICore::EnsureCapacity(PlayerContext& ctx, uint32_t requiredSize)
             return false;
         }
 
-        if (currentCtx->activeTextDrawCount + requiredSize <= currentCtx->evictionThreshold)
+        // Overflow-safe capacity comparison using widened 64-bit space
+        uint64_t total = static_cast<uint64_t>(currentCtx->activeTextDrawCount) + static_cast<uint64_t>(requiredSize);
+        if (total <= static_cast<uint64_t>(currentCtx->evictionThreshold))
         {
             Debug("EnsureCapacity OK playerid=%d active=%u required=%u threshold=%u",
                 playerId,

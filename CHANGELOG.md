@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **SUI-004**: Hardened capacity accounting and arithmetic invariants against overflow, underflow, and callback size mutation. Status: `FIXED — runtime regression verified`.
+  - Converted capacity evaluation in `EnsureCapacity` to 64-bit widened space (`(uint64_t)active + (uint64_t)required <= (uint64_t)threshold`), eliminating unsigned 32-bit addition wrap-around to zero.
+  - Implemented `SUICore::TryAddActiveTextDrawCount` guarding against 32-bit addition overflow and logging diagnostic invariant warnings when active textdraw count exceeds `maxTextDraws`.
+  - Hardened `SUICore::SubtractActiveTextDrawCount` with underflow detection, diagnostic logging, and safe zero-clamping.
+  - Implemented state-locking in `SUICore::SetGroupSize`: rejects mutation when a group is already created (`isCreated == true`) or currently executing a lifecycle callback (`isExecutingCallback == true`), eliminating TOCTOU capacity bypass during `cbCreate` and accounting drift upon destruction.
+  - In `ShowGroup`, snapshotted `authorizedSize` prior to `EnsureCapacity` and bound `postGroup.estimatedSize` to `authorizedSize` upon creation success, guaranteeing that capacity reservation matches exact accounting addition.
+  - Verified live runtime regression execution across all scenarios C1–C12 inside a 32-bit Linux SA-MP dedicated server (`samp03svr`) with zero accounting drift over 100 lifecycle cycles.
 - **SUI-003**: Hardened the Pawn → C++ native boundary with comprehensive input validation and safe type conversions across all 19 natives. Status: `FIXED — runtime input validation verified`.
   - Implemented `TryGetNonNegativeUInt32` to eliminate signed-to-unsigned wrap-around where negative Pawn cells (`-1`) were converted into `4294967295` via `static_cast<uint32_t>`. Applied to `size`, `timeout`, `maxCount`, and `threshold`.
   - Implemented `TryGetPriority` strictly constraining priority parameters to valid domain `[0..3]` (`SUI_PRIORITY_LOW` through `SUI_PRIORITY_CRITICAL`).
@@ -29,6 +36,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **SUI-009 (Partially Addressed)**: Replaced mutating `players[playerId]` `std::unordered_map::operator[]` lookups in group setters (`SetGroupSize`, `SetGroupPriority`, `SetGroupEvictable`, `SetIdleTimeout`) with defensive non-inserting `GetPlayerContext()` lookups to prevent phantom `PlayerContext` creation.
 
 ### Added
+- Created `tests/capacity_arithmetic/TEST_PLAN.md` documenting capacity arithmetic test scenarios C1 through C12.
+- Created `tests/capacity_arithmetic/capacity_arithmetic.pwn` and `tests/capacity_arithmetic/capacity_filterscript.pwn` verifying overflow safety, underflow guards, callback size-mutation locking, exact accounting subtraction, and 100-cycle drift resistance.
 - Created `tests/native_validation/TEST_PLAN.md` documenting validation test scenarios V1 through V10.
 - Created `tests/native_validation/native_validation.pwn` verifying negative parameters, invalid priorities, AMX memory safety, zero-value semantics, and boundary invariants.
 - Created `tests/amx_ownership/TEST_PLAN.md` documenting multi-AMX ownership test scenarios A1 through A6.

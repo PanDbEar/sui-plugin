@@ -281,6 +281,24 @@ Furthermore, string parameters were retrieved via an unchecked `GetStringParam` 
 
 ---
 
+### 3.10. MEDIUM: Capacity Arithmetic Overflow & Accounting Invariant Safety (SUI-004)
+
+**Location:** `src/Core.cpp:320-395, 705-757, 908-918`, `src/Core.hpp:78-83`.
+
+#### Mechanism & Reachability
+1. **Unsigned 32-bit Addition Overflow**: `EnsureCapacity` evaluated `currentCtx->activeTextDrawCount + requiredSize <= currentCtx->evictionThreshold`. If `activeTextDrawCount + requiredSize >= 2^32`, unsigned addition wrapped modulo $2^{32}$ back around zero, falsely evaluating as smaller than `evictionThreshold` and approving excessive resource allocation.
+2. **TOCTOU Size Mutation During Callback**: In `ShowGroup`, `EnsureCapacity` approved admission using `group.estimatedSize` before invoking `cbCreate`. If `cbCreate` called `SUI_SetGroupSize` to increase the size (e.g. to `2147483647`), post-callback accounting added the newly mutated size to `activeTextDrawCount`, completely bypassing `EnsureCapacity`.
+3. **Post-Creation Size Modification Drift**: Modifying `SUI_SetGroupSize` on an already-created group altered `group.estimatedSize` without updating `activeTextDrawCount`. When the group was later destroyed, `SubtractActiveTextDrawCount` subtracted the mismatched new size, causing permanent accounting drift (either leaking phantom textdraw counts or underflow-clamping other groups' active counts to zero).
+
+#### Phase 5 Remediation (Resolved)
+- Hardened `EnsureCapacity` using widened 64-bit space (`uint64_t total = (uint64_t)active + (uint64_t)required <= (uint64_t)threshold`).
+- Implemented `SUICore::TryAddActiveTextDrawCount` with 64-bit overflow prevention and diagnostic invariant checks.
+- Hardened `SUICore::SubtractActiveTextDrawCount` with underflow detection, diagnostic logging, and safe zero-clamping.
+- Implemented size locking in `SUICore::SetGroupSize`: rejects mutations while a group is currently created (`isCreated == true`) or executing a lifecycle callback (`isExecutingCallback == true`).
+- In `ShowGroup`, snapshotted `authorizedSize` prior to `EnsureCapacity` and bound `postGroup.estimatedSize` to `authorizedSize` on creation success, guaranteeing that capacity reservation matches exact accounting addition.
+
+---
+
 ## 4. Risk & Severity Matrix
 
 | ID | Issue | Severity | Target Phase |
@@ -288,12 +306,13 @@ Furthermore, string parameters were retrieved via an unchecked `GetStringParam` 
 | **3.1** | Container invalidation / iterator crash during Pawn callbacks | **CRITICAL** | Phase 1 (Resolved) |
 | **3.2** | Non-standard native registration (`amx_Redirect`) | **HIGH** | Phase 2 (Resolved) |
 | **3.3** | AMX script ownership & multi-script collision | **HIGH** | Phase 3 (Resolved) |
-| **3.4** | Inverted return code failure trap in `CallPawnFunction` | **MEDIUM** | Phase 5 |
-| **3.5** | Eager & destructive capacity eviction failure | **MEDIUM** | Phase 5 |
-| **3.6** | Immediate auto-destroy on failed show (`hiddenSinceTick == 0`) | **MEDIUM** | Phase 5 |
+| **3.4** | Inverted return code failure trap in `CallPawnFunction` | **MEDIUM** | Phase 6 |
+| **3.5** | Eager & destructive capacity eviction failure | **MEDIUM** | Phase 7 |
+| **3.6** | Immediate auto-destroy on failed show (`hiddenSinceTick == 0`) | **MEDIUM** | Phase 7 |
 | **3.7** | Unchecked player ID & phantom context allocation | **LOW** | Phase 1/4 (Partially Resolved) |
 | **3.8** | Orphaned open.mp component code (`Component.cpp`) | **LOW** | Future |
 | **3.9** | Unsafe Pawn parameter validation and signed/unsigned conversion (SUI-003) | **HIGH** | Phase 4 (Resolved) |
+| **3.10** | Capacity arithmetic overflow and accounting invariant safety (SUI-004) | **MEDIUM** | Phase 5 (Resolved) |
 
 ---
 
@@ -303,5 +322,7 @@ Furthermore, string parameters were retrieved via an unchecked `GetStringParam` 
 2. **Phase 2 (SUI-011)**: Transitioned from `amx_Redirect` to standard `amx_Register`.
 3. **Phase 3 (SUI-002)**: Implemented strict AMX ownership, callback isolation, and safe AMX unload.
 4. **Phase 4 (SUI-003)**: Hardened Pawn native input validation, bounds checking, and memory safety.
-5. **Phase 5 (SUI-006 / SUI-004)**: Callback return semantics and non-destructive capacity overflow redesign.
+5. **Phase 5 (SUI-004)**: Hardened capacity arithmetic, overflow prevention, and accounting invariants.
+6. **Phase 6 (SUI-006)**: Decouple callback return semantics from state transition success.
+
 

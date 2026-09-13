@@ -75,8 +75,9 @@ public:
     static void CleanupPlayer(int playerId);
     static void ResetPlayer(int playerId);
 
-    static void SetGroupSize(int playerId, const std::string& groupName, uint32_t size);
+    static bool SetGroupSize(int playerId, const std::string& groupName, uint32_t size);
     static uint32_t GetActiveTextDrawCount(int playerId);
+    static bool TryAddActiveTextDrawCount(PlayerContext& ctx, uint32_t amount);
     static void AddActiveTextDrawCount(PlayerContext& ctx, uint32_t amount);
     static void SubtractActiveTextDrawCount(PlayerContext& ctx, uint32_t amount);
     static void SetMaxTextDraws(int playerId, uint32_t maxCount);

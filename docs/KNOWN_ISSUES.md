@@ -13,7 +13,7 @@
 | **SUI-001** | Critical | Core / Concurrency | Re-entrancy / callback-driven container invalidation | `FIXED — runtime regression verified` | Phase 1 |
 | **SUI-002** | High | AMX / Dispatch | Missing AMX ownership / ambiguous callback routing | `FIXED — runtime multi-AMX regression verified` | Phase 3 |
 | **SUI-003** | Medium | Natives / Validation | Unsafe Pawn parameter validation and signed/unsigned conversion | `FIXED — runtime input validation verified` | Phase 4 |
-| **SUI-004** | Medium | Core / Capacity | Capacity arithmetic overflow risk | `CONFIRMED` | Phase 2 |
+| **SUI-004** | Medium | Core / Capacity | Capacity arithmetic overflow and accounting invariant safety | `FIXED — runtime regression verified` | Phase 5 |
 | **SUI-005** | High | Core / Lifecycle | Reset/Cleanup state loss when destruction fails | `CONFIRMED` | Phase 1 |
 | **SUI-006** | Medium | Core / AMX | Callback return-value / internal state divergence | `CONFIRMED` | Phase 1 |
 | **SUI-007** | Medium | Core / Eviction | Destructive capacity eviction without pre-flight sufficiency | `CONFIRMED` | Phase 2 |
@@ -36,11 +36,9 @@
 - **Severity:** Critical
 - **Area:** Core / Concurrency
 - **Status:** FIXED — runtime regression verified
-- **Technical Context:** `SUICore::players` is `std::unordered_map<int, PlayerContext>` and `PlayerContext::groups` is `std::unordered_map<std::string, SUIGroup>`. In `std::unordered_map`, element insertion can trigger a bucket rehash that invalidates all active iterators and references across the container.
-- **Fix Summary:** Eliminated stale container iterator and reference lifetimes across `CallPawnFunction` boundaries. `ProcessTick`, `CleanupPlayer`, and `ResetPlayer` now use stable key snapshots (`playerIds`, `groupNames`). All continuation points (`ShowGroup`, `HideGroup`, `DestroyGroupInternal`, `EvictOneHiddenGroup`, `EnsureCapacity`) revalidate and reacquire `PlayerContext` and `SUIGroup` from stable identifiers post-callback. Erase operations utilize stable keys (`players.erase(playerId)`).
-- **Lookup Helpers:** `GetPlayerContext` and `GetPlayerGroup` perform non-inserting `find()` queries. Pointers returned by these helpers are valid strictly until the next mutation/callback boundary; the helpers do not make pointers globally stable.
-- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/reentrancy_regression.pwn` (scenarios R1 through R10). All 10 scenarios passed with 0 crashes, 0 memory corruption, and clean server shutdown.
-- **Evidence:** `src/Core.cpp:38-52`, `src/Core.cpp:54-152`, `src/Core.cpp:183-360`, `src/Core.cpp:362-444`, `src/Core.cpp:478-590`, `src/Core.cpp:739-908`, `src/Core.cpp:910-1046`.
+- **Fix Summary:** Converted all raw references and iterator-dependent traversals to stable key snapshots (`playerId`, `groupName`) with post-callback re-acquisition via `GetPlayerContext` and `GetPlayerGroup`. Container modification or player context erasure during callbacks no longer triggers iterator invalidation or memory faults.
+- **Runtime Verification:** Verified across R1–R10 live scenarios inside 32-bit Linux SA-MP dedicated server (`samp03svr`).
+- **Evidence:** `src/Core.cpp:38-230, 310-475, 500-600, 845-920, 940-1010, 1070-1170`, `tests/reentrancy_regression.pwn`.
 - **Planned phase:** Phase 1
 
 ---
@@ -50,9 +48,9 @@
 - **Severity:** High
 - **Area:** AMX / Dispatch
 - **Status:** FIXED — runtime multi-AMX regression verified
-- **Fix Summary:** Implemented explicit AMX ownership on `SUIGroup` (`AMX* ownerAmx`). Native `SUI_CreatePlayerFactoryGroup` captures caller AMX and enforces anti-hijacking (rejecting registration if group is already owned by another active AMX). `CallPawnFunction` isolates lookup and execution strictly to `ownerAmx` without cross-script fallback. `AmxUnload` delegates to `SUICore::UnloadAmx`, safely purging all groups owned by the unloading AMX and repairing `activeTextDrawCount` via `SubtractActiveTextDrawCount` without invoking Pawn callbacks or disturbing other active AMX instances.
-- **Runtime Verification:** Verified in headless 32-bit Linux SA-MP dedicated server (`samp03svr`) with simultaneous Gamemode (`ownership_gamemode.pwn`) and Filterscript (`ownership_filterscript.pwn`). All test cases (A1: Gamemode owner dispatch, A2: Callback name collision isolation with `SharedCallback`, A3: No fallback on missing callback, A4: Anti-hijacking registration guard, A5: Safe AMX unload and capacity repair, A6: Post-unload re-registration) PASSED (6/6). Zero regressions in SUI-001 (R1-R10 all PASS).
-- **Evidence:** `src/Core.hpp:37, 58-59, 66, 99`, `src/Core.cpp:39-114, 183-196, 230-276, 353-421, 495-508, 951-968, 1059-1108, 1321-1366`, `src/Natives.cpp:15-28`, `src/main.cpp:88-97`, `tests/amx_ownership/TEST_PLAN.md`.
+- **Fix Summary:** Group registration now binds `SUIGroup::ownerAmx` to the originating script's `AMX*`. Callbacks dispatch strictly to `ownerAmx` without falling back to other scripts. `UnloadAmx` purges registered groups and repairs active capacity when a script unloads.
+- **Runtime Verification:** Verified across A1–A6 live scenarios inside 32-bit Linux SA-MP dedicated server (`samp03svr`).
+- **Evidence:** `src/Core.hpp:35`, `src/Core.cpp:55-95, 1225-1260`, `tests/amx_ownership/`.
 - **Planned phase:** Phase 3
 
 ---
@@ -69,20 +67,25 @@
   - Hardened `Utils::CheckParams` with defensive null and negative `params[0]` guards to prevent out-of-bounds parameter reads.
   - Normalized boolean parameters via standard Pawn semantics `(params[X] != 0)` in `SUI_SetDebug` and `SUI_SetGroupEvictable`.
   - Enforced atomic parameter validation across all string parameters in `SUI_CreatePlayerFactoryGroup` to ensure failed parameter extraction never partially mutates state.
-- **Runtime Verification:** Verified in headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/native_validation/native_validation.pwn` (scenarios V1 through V10). All 10 scenarios passed with 0 crashes, 0 memory corruption, and clean server shutdown. Zero regressions in SUI-001 (R1–R10) and SUI-002 (A1–A6).
+- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/native_validation/native_validation.pwn` (scenarios V1 through V10). All 10 scenarios passed with 0 crashes, 0 memory corruption, and clean server shutdown. Zero regressions in SUI-001 (R1–R10) and SUI-002 (A1–A6).
 - **Evidence:** `src/Utils.hpp:12-68`, `src/Natives.cpp:7-189`, `tests/native_validation/TEST_PLAN.md`.
 - **Planned phase:** Phase 4
 
 ---
 
-### SUI-004: Capacity arithmetic overflow risk
+### SUI-004: Capacity arithmetic overflow and accounting invariant safety
 - **ID:** SUI-004
 - **Severity:** Medium
 - **Area:** Core / Capacity
-- **Status:** CONFIRMED
-- **Current behavior:** `EnsureCapacity` checks `ctx.activeTextDrawCount + requiredSize <= ctx.evictionThreshold` using 32-bit unsigned integers without overflow checking.
-- **Risk:** Large `requiredSize` values can wrap arithmetic around zero, bypassing threshold checks.
-- **Evidence:** `src/Core.cpp:533, 551`, `tests/native_validation/native_validation.pwn` (test V7 demonstrates that large 31-bit positive integers such as `2147483647` are valid non-negative inputs under SUI-003, but addition in `EnsureCapacity` causes unsigned 32-bit overflow).
+- **Status:** FIXED — runtime regression verified
+- **Fix Summary:**
+  - Hardened capacity comparison in `EnsureCapacity` using widened 64-bit arithmetic (`(uint64_t)active + (uint64_t)required <= (uint64_t)threshold`), eliminating unsigned 32-bit addition wrap-around.
+  - Implemented `SUICore::TryAddActiveTextDrawCount` with 64-bit overflow detection and diagnostic logging; rejects addition without mutating state if overflow would occur.
+  - Hardened `SUICore::SubtractActiveTextDrawCount` with diagnostic logging on underflow invariant violation and safe clamp to zero.
+  - Implemented locking in `SUICore::SetGroupSize`: rejects size mutation while group is created (`isCreated == true`) or currently executing a lifecycle callback (`isExecutingCallback == true`), preventing TOCTOU accounting corruption during `cbCreate` and accounting drift upon destruction.
+  - In `ShowGroup`, snapshotted `authorizedSize` prior to `EnsureCapacity` and bound `postGroup.estimatedSize` to `authorizedSize` upon creation success, guaranteeing that capacity reservation matches exact accounting addition.
+- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/capacity_arithmetic/capacity_arithmetic.pwn` (scenarios C1 through C12). All 12 scenarios passed with 0 crashes, 0 memory corruption, and zero accounting drift across 100 lifecycle cycles. Zero regressions in V1–V10, R1–R10, and A1–A6.
+- **Evidence:** `src/Core.hpp:78-83`, `src/Core.cpp:320-395, 705-757, 908-918`, `tests/capacity_arithmetic/TEST_PLAN.md`.
 - **Planned phase:** Phase 5
 
 ---

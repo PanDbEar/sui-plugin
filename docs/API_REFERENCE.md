@@ -110,8 +110,9 @@ Configures the duration in milliseconds that a group remains allocated while hid
 native SUI_SetGroupSize(playerid, const group[], size);
 ```
 Specifies the number of PlayerTextDraws managed by the group. Used for capacity tracking and eviction threshold calculations.
+Configures the estimated size before group creation. It cannot modify the size of an already-created group (`isCreated == true`) or a group currently executing a lifecycle callback (`isExecutingCallback == true`).
 - **`size`**: Must be a non-negative integer (`>= 0`). Negative values are rejected and return `0`. A value of `0` is accepted and normalized to `1`.
-- **Returns**: `1` on success, `0` on validation error or group not found.
+- **Returns**: `1` on success, `0` on validation error, group not found, or if the group is already created / executing a lifecycle callback.
 
 ---
 

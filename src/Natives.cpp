@@ -129,8 +129,7 @@ cell AMX_NATIVE_CALL Natives::SUI_SetGroupSize(AMX* amx, cell* params)
         return 0;
     }
 
-    SUICore::SetGroupSize(playerId, group, size);
-    return 1;
+    return SUICore::SetGroupSize(playerId, group, size) ? 1 : 0;
 }
 
 cell AMX_NATIVE_CALL Natives::SUI_GetActiveTextDrawCount(AMX* amx, cell* params)
