@@ -1,0 +1,43 @@
+# Build outputs & CMake cache
+build/
+build*/
+bin/
+out/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Object & binary files
+*.o
+*.obj
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+*.exp
+
+# Pawn compiled binaries
+*.amx
+*.xml
+
+# IDE & editor directories
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.suo
+*.user
+*.userosscache
+*.sln
+*.vcxproj*
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
