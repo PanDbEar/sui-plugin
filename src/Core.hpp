@@ -31,6 +31,10 @@ struct SUIGroup {
     bool evictable = true;
 
     bool isExecutingCallback = false;
+
+    // Non-owning pointer to the AMX script instance that registered this group.
+    // Lifecycle is managed by the host server; purged during AmxUnload.
+    AMX* ownerAmx = nullptr;
 };
 
 struct PlayerContext {
@@ -51,12 +55,15 @@ public:
     static void Debug(const char* format, ...);
     static void SetDebug(bool enabled);
 
+    static bool IsAmxActive(AMX* amx);
+    static void UnloadAmx(AMX* amx);
+
     static PlayerContext* GetPlayerContext(int playerId);
     static SUIGroup* GetPlayerGroup(int playerId, const std::string& groupName);
 
     static void ProcessTick(uint64_t currentTick);
     
-    static void RegisterFactoryGroup(int playerId, const std::string& group, 
+    static bool RegisterFactoryGroup(AMX* amx, int playerId, const std::string& group, 
                                      const std::string& cbCreate, const std::string& cbDestroy, 
                                      const std::string& cbShow, const std::string& cbHide);
                                      
@@ -89,5 +96,5 @@ public:
 
     static bool TouchGroup(int playerId, const std::string& groupName);
 
-    static bool CallPawnFunction(int playerId, const std::string& functionName);
+    static bool CallPawnFunction(AMX* ownerAmx, int playerId, const std::string& functionName);
 };

@@ -16,7 +16,8 @@ cell AMX_NATIVE_CALL Natives::SUI_CreatePlayerFactoryGroup(AMX* amx, cell* param
     if (!Utils::CheckParams(params, 6)) return 0;
     
     int playerId = params[1];
-    SUICore::RegisterFactoryGroup(
+    bool ok = SUICore::RegisterFactoryGroup(
+        amx,
         playerId, 
         Utils::GetStringParam(amx, params[2]), 
         Utils::GetStringParam(amx, params[3]), 
@@ -24,7 +25,7 @@ cell AMX_NATIVE_CALL Natives::SUI_CreatePlayerFactoryGroup(AMX* amx, cell* param
         Utils::GetStringParam(amx, params[5]), 
         Utils::GetStringParam(amx, params[6])
     );
-    return 1;
+    return ok ? 1 : 0;
 }
 
 cell AMX_NATIVE_CALL Natives::SUI_ShowGroup(AMX* amx, cell* params)

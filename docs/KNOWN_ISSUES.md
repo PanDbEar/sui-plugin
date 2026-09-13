@@ -11,7 +11,7 @@
 | ID | Severity | Area | Title | Status | Planned Phase |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **SUI-001** | Critical | Core / Concurrency | Re-entrancy / callback-driven container invalidation | `FIXED — runtime regression verified` | Phase 1 |
-| **SUI-002** | High | AMX / Dispatch | Missing AMX ownership / ambiguous callback routing | `CONFIRMED` | Phase 1 |
+| **SUI-002** | High | AMX / Dispatch | Missing AMX ownership / ambiguous callback routing | `FIXED — runtime multi-AMX regression verified` | Phase 3 |
 | **SUI-003** | Medium | Natives / Validation | Unsafe Pawn parameter validation and signed/unsigned conversion | `CONFIRMED` | Phase 1 |
 | **SUI-004** | Medium | Core / Capacity | Capacity arithmetic overflow risk | `CONFIRMED` | Phase 2 |
 | **SUI-005** | High | Core / Lifecycle | Reset/Cleanup state loss when destruction fails | `CONFIRMED` | Phase 1 |
@@ -25,6 +25,7 @@
 | **SUI-013** | High | Repo / Git | Repository dependency / nested Git metadata handling | `RESOLVED` | Pre-Release |
 | **SUI-014** | Medium | QA / Tooling | Missing automated tests and CI | `CONFIRMED` | Phase 2 |
 | **SUI-015** | Medium | Build / Packaging | Release packaging not yet defined | `CONFIRMED` | Pre-Release |
+| **SUI-016** | Low | Core / Resource Lifecycle | Owner-unload external UI resource cleanup limitation | `CONFIRMED` | Phase 4 |
 
 ---
 
@@ -48,11 +49,11 @@
 - **ID:** SUI-002
 - **Severity:** High
 - **Area:** AMX / Dispatch
-- **Status:** CONFIRMED
-- **Current behavior:** `CallPawnFunction` searches `activeAmxInstances` sequentially and executes on the first AMX containing a matching public function name. SUI does not track which AMX instance registered a group.
-- **Risk:** In servers running both a gamemode and filterscripts, callbacks with identical names execute on the wrong script, corrupting script variables and state.
-- **Evidence:** `src/Core.cpp:940-967`, `src/Core.hpp:48`.
-- **Planned phase:** Phase 1
+- **Status:** FIXED — runtime multi-AMX regression verified
+- **Fix Summary:** Implemented explicit AMX ownership on `SUIGroup` (`AMX* ownerAmx`). Native `SUI_CreatePlayerFactoryGroup` captures caller AMX and enforces anti-hijacking (rejecting registration if group is already owned by another active AMX). `CallPawnFunction` isolates lookup and execution strictly to `ownerAmx` without cross-script fallback. `AmxUnload` delegates to `SUICore::UnloadAmx`, safely purging all groups owned by the unloading AMX and repairing `activeTextDrawCount` via `SubtractActiveTextDrawCount` without invoking Pawn callbacks or disturbing other active AMX instances.
+- **Runtime Verification:** Verified in headless 32-bit Linux SA-MP dedicated server (`samp03svr`) with simultaneous Gamemode (`ownership_gamemode.pwn`) and Filterscript (`ownership_filterscript.pwn`). All test cases (A1: Gamemode owner dispatch, A2: Callback name collision isolation with `SharedCallback`, A3: No fallback on missing callback, A4: Anti-hijacking registration guard, A5: Safe AMX unload and capacity repair, A6: Post-unload re-registration) PASSED (6/6). Zero regressions in SUI-001 (R1-R10 all PASS).
+- **Evidence:** `src/Core.hpp:37, 58-59, 66, 99`, `src/Core.cpp:39-114, 183-196, 230-276, 353-421, 495-508, 951-968, 1059-1108, 1321-1366`, `src/Natives.cpp:15-28`, `src/main.cpp:88-97`, `tests/amx_ownership/TEST_PLAN.md`.
+- **Planned phase:** Phase 3
 
 ---
 
@@ -214,3 +215,14 @@
 - **Risk:** Manual, error-prone artifact bundling for public release.
 - **Evidence:** `CMakeLists.txt` has no install target.
 - **Planned phase:** Pre-Release
+
+---
+
+### SUI-016: Owner-unload external UI resource cleanup limitation
+- **ID:** SUI-016
+- **Severity:** Low
+- **Area:** Core / Resource Lifecycle
+- **Status:** CONFIRMED
+- **Current behavior:** When an AMX instance unloads (e.g. `AmxUnload`), SUI purges all internal group state owned by that AMX and repairs `activeTextDrawCount`. However, SUI does not track or manage underlying host SA-MP PlayerTextDraw handles (`PlayerTextDrawDestroy`).
+- **Risk:** If an unloading script fails to destroy its PlayerTextDraws in `OnFilterScriptExit`, the underlying textdraw IDs remain allocated in the host server memory even though SUI has cleared its virtual tracking. Scripts must clean up their own textdraw IDs in their exit callback.
+- **Planned phase:** Phase 4

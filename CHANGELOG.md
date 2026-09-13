@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **SUI-002**: Implemented strict AMX ownership, callback isolation, and safe AMX unload. Status: `FIXED — runtime multi-AMX regression verified`.
+  - Added non-owning pointer `AMX* ownerAmx` to `SUIGroup` tracking the originating AMX instance.
+  - Updated `SUI_CreatePlayerFactoryGroup` and `SUICore::RegisterFactoryGroup` to record caller AMX and prevent group hijacking if already owned by another active AMX.
+  - Refactored `CallPawnFunction` to dispatch exclusively to `group.ownerAmx`, removing the global fallback loop across `activeAmxInstances` and ensuring complete callback isolation between Gamemode and Filterscripts.
+  - Implemented `SUICore::UnloadAmx(AMX* amx)` called during `AmxUnload`, safely purging all groups registered by the unloading AMX and repairing `activeTextDrawCount` via `SubtractActiveTextDrawCount` without invoking Pawn callbacks or disturbing other scripts.
+  - Verified multi-AMX isolation and dynamic unload on live 32-bit Linux SA-MP dedicated server (`samp03svr`) with 6/6 test scenarios passing.
 - **SUI-001**: Resolved callback-driven re-entrancy, iterator invalidation, and use-after-free risks across all Pawn callback boundaries (`OnPlayerUIDestroyGroup`, `OnPlayerUIHideGroup`, `OnPlayerUICreateGroup`, `OnPlayerUIShowGroup`). Status: `FIXED — runtime regression verified`.
   - Eliminated iterator and raw reference survival across `CallPawnFunction` calls in `ProcessTick`, `ShowGroup`, `HideGroup`, `CleanupPlayer`, `ResetPlayer`, `EnsureCapacity`, `EvictOneHiddenGroup`, and `DestroyGroup`.
   - Replaced container traversal with stable key snapshots (`playerId`, `groupName`) and post-callback re-acquisition via `GetPlayerContext()` and `GetPlayerGroup()`.
@@ -15,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **SUI-009 (Partially Addressed)**: Replaced mutating `players[playerId]` `std::unordered_map::operator[]` lookups in group setters (`SetGroupSize`, `SetGroupPriority`, `SetGroupEvictable`, `SetIdleTimeout`) with defensive non-inserting `GetPlayerContext()` lookups to prevent phantom `PlayerContext` creation.
 
 ### Added
+- Created `tests/amx_ownership/TEST_PLAN.md` documenting multi-AMX ownership test scenarios A1 through A6.
+- Created `tests/amx_ownership/ownership_gamemode.pwn` and `tests/amx_ownership/ownership_filterscript.pwn` verifying multi-AMX callback isolation, duplicate callback name isolation, missing callback non-fallback, anti-hijacking, and safe dynamic AMX unload with capacity repair.
 - Created `tests/REENTRANCY_TEST_PLAN.md` cataloging re-entrancy test scenarios R1 through R10.
 - Created `tests/reentrancy_regression.pwn` providing regression test coverage for re-entrant lifecycle operations across Pawn callbacks (compiled and verified with Pawn compiler 3.2.3664).
 

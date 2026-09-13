@@ -85,7 +85,10 @@ PLUGIN_EXPORT int PLUGIN_CALL AmxLoad(AMX *amx)
         return result;
     }
 
-    SUICore::activeAmxInstances.push_back(amx);
+    if (!SUICore::IsAmxActive(amx))
+    {
+        SUICore::activeAmxInstances.push_back(amx);
+    }
     SUICore::Debug("AmxLoad: successfully registered SUI natives.");
 
     return AMX_ERR_NONE;
@@ -93,9 +96,7 @@ PLUGIN_EXPORT int PLUGIN_CALL AmxLoad(AMX *amx)
 
 PLUGIN_EXPORT int PLUGIN_CALL AmxUnload(AMX *amx)
 {
-    auto& amxList = SUICore::activeAmxInstances;
-    amxList.erase(std::remove(amxList.begin(), amxList.end(), amx), amxList.end());
-
+    SUICore::UnloadAmx(amx);
     SUICore::Debug("AmxUnload called. AMX removed.");
 
     return AMX_ERR_NONE;
