@@ -12,7 +12,7 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **SUI-001** | Critical | Core / Concurrency | Re-entrancy / callback-driven container invalidation | `FIXED — runtime regression verified` | Phase 1 |
 | **SUI-002** | High | AMX / Dispatch | Missing AMX ownership / ambiguous callback routing | `FIXED — runtime multi-AMX regression verified` | Phase 3 |
-| **SUI-003** | Medium | Natives / Validation | Unsafe Pawn parameter validation and signed/unsigned conversion | `CONFIRMED` | Phase 1 |
+| **SUI-003** | Medium | Natives / Validation | Unsafe Pawn parameter validation and signed/unsigned conversion | `FIXED — runtime input validation verified` | Phase 4 |
 | **SUI-004** | Medium | Core / Capacity | Capacity arithmetic overflow risk | `CONFIRMED` | Phase 2 |
 | **SUI-005** | High | Core / Lifecycle | Reset/Cleanup state loss when destruction fails | `CONFIRMED` | Phase 1 |
 | **SUI-006** | Medium | Core / AMX | Callback return-value / internal state divergence | `CONFIRMED` | Phase 1 |
@@ -25,7 +25,7 @@
 | **SUI-013** | High | Repo / Git | Repository dependency / nested Git metadata handling | `RESOLVED` | Pre-Release |
 | **SUI-014** | Medium | QA / Tooling | Missing automated tests and CI | `CONFIRMED` | Phase 2 |
 | **SUI-015** | Medium | Build / Packaging | Release packaging not yet defined | `CONFIRMED` | Pre-Release |
-| **SUI-016** | Low | Core / Resource Lifecycle | Owner-unload external UI resource cleanup limitation | `CONFIRMED` | Phase 4 |
+| **SUI-016** | Medium | Core / Resource Lifecycle | Owner-unload external UI resource cleanup limitation | `CONFIRMED` | Phase 5 |
 
 ---
 
@@ -61,11 +61,17 @@
 - **ID:** SUI-003
 - **Severity:** Medium
 - **Area:** Natives / Parameter Handling
-- **Status:** CONFIRMED
-- **Current behavior:** Native handlers in `src/Natives.cpp` cast parameters via `static_cast<uint32_t>(params[X])` without verifying signed bounds.
-- **Risk:** Negative values passed from Pawn (e.g. `-1`) wrap around to large positive integers (e.g. `4294967295`), causing corrupted capacity counts and timer state.
-- **Evidence:** `src/Natives.cpp:80, 99, 110, 123`, `src/Utils.hpp:27-29`.
-- **Planned phase:** Phase 1
+- **Status:** FIXED — runtime input validation verified
+- **Fix Summary:** 
+  - Implemented `Utils::TryGetNonNegativeUInt32` to strictly reject negative Pawn cells (`value < 0`) before converting to unsigned `uint32_t` (`SUI_SetGroupSize`, `SUI_SetMaxTextDraws`, `SUI_SetEvictionThreshold`, `SUI_SetIdleTimeout`).
+  - Implemented `Utils::TryGetPriority` enforcing range validation `[SUI_PRIORITY_LOW (0) .. SUI_PRIORITY_CRITICAL (3)]` before casting to `uint8_t` in `SUI_SetGroupPriority`.
+  - Implemented `Utils::TryGetStringParam` which validates `amx_GetAddr`, `amx_StrLen`, and `amx_GetString` return codes before accessing AMX memory, distinguishing valid empty strings from invalid memory addresses (`AMX_ERR_MEMACCESS`).
+  - Hardened `Utils::CheckParams` with defensive null and negative `params[0]` guards to prevent out-of-bounds parameter reads.
+  - Normalized boolean parameters via standard Pawn semantics `(params[X] != 0)` in `SUI_SetDebug` and `SUI_SetGroupEvictable`.
+  - Enforced atomic parameter validation across all string parameters in `SUI_CreatePlayerFactoryGroup` to ensure failed parameter extraction never partially mutates state.
+- **Runtime Verification:** Verified in headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/native_validation/native_validation.pwn` (scenarios V1 through V10). All 10 scenarios passed with 0 crashes, 0 memory corruption, and clean server shutdown. Zero regressions in SUI-001 (R1–R10) and SUI-002 (A1–A6).
+- **Evidence:** `src/Utils.hpp:12-68`, `src/Natives.cpp:7-189`, `tests/native_validation/TEST_PLAN.md`.
+- **Planned phase:** Phase 4
 
 ---
 
@@ -76,8 +82,8 @@
 - **Status:** CONFIRMED
 - **Current behavior:** `EnsureCapacity` checks `ctx.activeTextDrawCount + requiredSize <= ctx.evictionThreshold` using 32-bit unsigned integers without overflow checking.
 - **Risk:** Large `requiredSize` values can wrap arithmetic around zero, bypassing threshold checks.
-- **Evidence:** `src/Core.cpp:533, 551`.
-- **Planned phase:** Phase 2
+- **Evidence:** `src/Core.cpp:533, 551`, `tests/native_validation/native_validation.pwn` (test V7 demonstrates that large 31-bit positive integers such as `2147483647` are valid non-negative inputs under SUI-003, but addition in `EnsureCapacity` causes unsigned 32-bit overflow).
+- **Planned phase:** Phase 5
 
 ---
 
@@ -220,9 +226,9 @@
 
 ### SUI-016: Owner-unload external UI resource cleanup limitation
 - **ID:** SUI-016
-- **Severity:** Low
+- **Severity:** Medium
 - **Area:** Core / Resource Lifecycle
 - **Status:** CONFIRMED
 - **Current behavior:** When an AMX instance unloads (e.g. `AmxUnload`), SUI purges all internal group state owned by that AMX and repairs `activeTextDrawCount`. However, SUI does not track or manage underlying host SA-MP PlayerTextDraw handles (`PlayerTextDrawDestroy`).
-- **Risk:** If an unloading script fails to destroy its PlayerTextDraws in `OnFilterScriptExit`, the underlying textdraw IDs remain allocated in the host server memory even though SUI has cleared its virtual tracking. Scripts must clean up their own textdraw IDs in their exit callback.
-- **Planned phase:** Phase 4
+- **Risk:** In server environments where filterscripts are dynamically reloaded (e.g., administrative script updates or modular gamemode designs), if an unloading script fails to destroy its raw PlayerTextDraw handles in `OnFilterScriptExit`, those IDs remain allocated in the SA-MP host server memory. SA-MP allocates a maximum of 256 PlayerTextDraw IDs per player; repeatedly reloading scripts with unmanaged handles will eventually exhaust player textdraw pools, causing all future UI creation to fail server-wide.
+- **Planned phase:** Phase 5

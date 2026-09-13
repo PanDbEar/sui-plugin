@@ -99,7 +99,9 @@ Resets all SUI groups and counters for an active player without disconnecting.
 native SUI_SetIdleTimeout(playerid, const group[], timeout_ms);
 ```
 Configures the duration in milliseconds that a group remains allocated while hidden before being automatically destroyed.
+- **`timeout_ms`**: Must be a non-negative integer (`>= 0`). Negative values are rejected and return `0`.
 - **Default**: `30000` (30 seconds).
+- **Returns**: `1` on success, `0` on validation error or group not found.
 
 ---
 
@@ -108,6 +110,8 @@ Configures the duration in milliseconds that a group remains allocated while hid
 native SUI_SetGroupSize(playerid, const group[], size);
 ```
 Specifies the number of PlayerTextDraws managed by the group. Used for capacity tracking and eviction threshold calculations.
+- **`size`**: Must be a non-negative integer (`>= 0`). Negative values are rejected and return `0`. A value of `0` is accepted and normalized to `1`.
+- **Returns**: `1` on success, `0` on validation error or group not found.
 
 ---
 
@@ -116,7 +120,9 @@ Specifies the number of PlayerTextDraws managed by the group. Used for capacity 
 native SUI_SetMaxTextDraws(playerid, max_count);
 ```
 Sets the upper bound of PlayerTextDraws tracked for a player.
+- **`max_count`**: Must be a non-negative integer (`>= 0`). Negative values are rejected and return `0`. A value of `0` defaults to `256`.
 - **Default**: `256`.
+- **Returns**: `1` on success, `0` on validation error.
 
 ---
 
@@ -125,7 +131,9 @@ Sets the upper bound of PlayerTextDraws tracked for a player.
 native SUI_SetEvictionThreshold(playerid, threshold);
 ```
 Sets the threshold count of active textdraws above which SUI begins evicting hidden groups.
+- **`threshold`**: Must be a non-negative integer (`>= 0`). Negative values are rejected and return `0`. A value of `0` defaults to `230`.
 - **Default**: `230`.
+- **Returns**: `1` on success, `0` on validation error.
 
 ---
 
@@ -134,6 +142,8 @@ Sets the threshold count of active textdraws above which SUI begins evicting hid
 native SUI_SetGroupPriority(playerid, const group[], priority);
 ```
 Assigns an eviction priority (`SUI_PRIORITY_LOW` to `SUI_PRIORITY_CRITICAL`).
+- **`priority`**: Must be within the domain `0` to `3` (`SUI_PRIORITY_LOW` .. `SUI_PRIORITY_CRITICAL`). Any value outside this range is rejected and returns `0`.
+- **Returns**: `1` on success, `0` on validation error or group not found.
 
 ---
 
@@ -142,6 +152,8 @@ Assigns an eviction priority (`SUI_PRIORITY_LOW` to `SUI_PRIORITY_CRITICAL`).
 native SUI_SetGroupEvictable(playerid, const group[], bool:enabled);
 ```
 Enables or disables automatic capacity eviction for the specified group.
+- **`enabled`**: Follows standard Pawn boolean convention (`0` = false, non-zero = true).
+- **Returns**: `1` on success, `0` on error.
 
 ---
 

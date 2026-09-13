@@ -258,25 +258,50 @@ while (ctx.activeTextDrawCount + requiredSize > ctx.evictionThreshold)
 
 ---
 
+### 3.9. HIGH: Unsafe Pawn Native Parameter Validation and Signed/Unsigned Conversion (SUI-003)
+
+**Location:** `src/Natives.cpp`, `src/Utils.hpp`.
+
+#### Mechanism
+Pawn `cell` values are signed 32-bit integers (`int32_t`). Native parameter unpacking previously cast `cell` values directly to unsigned types via `static_cast<uint32_t>(params[X])` without verifying signed bounds.
+Furthermore, string parameters were retrieved via an unchecked `GetStringParam` function that never examined the return values of `amx_GetAddr`, `amx_StrLen`, or `amx_GetString`, and `CheckParams` did not protect against negative `params[0]` values.
+
+#### Impact
+- **Signed-to-Unsigned Wrap**: Supplying negative values (e.g., `-1`) wrapped around to `4294967295` in group size, idle timeout, max textdraw count, and eviction threshold. This bypassed capacity logic or caused massive timing values.
+- **Out-of-Range Priority**: Priority values outside `[0..3]` were cast to `uint8_t`, breaking priority tier logic.
+- **SIGSEGV / Memory Corruption**: Invalid AMX memory addresses passed into string arguments caused `amx_GetAddr` to fail with `AMX_ERR_MEMACCESS`. Without checking return codes, subsequent dereferencing caused segmentation faults.
+- **Partial State Mutation**: If a multi-argument native had valid leading arguments but invalid trailing arguments, state could be partially mutated before failure.
+
+#### Phase 4 Remediation (Resolved)
+- Implemented `Utils::TryGetNonNegativeUInt32` to strictly reject negative integers before unsigned conversion.
+- Implemented `Utils::TryGetPriority` strictly enforcing range `[SUI_PRIORITY_LOW (0) .. SUI_PRIORITY_CRITICAL (3)]`.
+- Implemented `Utils::TryGetStringParam` validating `amx_GetAddr`, `amx_StrLen`, and `amx_GetString` error codes and distinguishing empty strings from invalid pointers.
+- Hardened `Utils::CheckParams` with negative `params[0]` guards.
+- Enforced atomic parameter validation in all 19 natives prior to mutating SUI core state.
+
+---
+
 ## 4. Risk & Severity Matrix
 
 | ID | Issue | Severity | Target Phase |
 | :--- | :--- | :--- | :--- |
-| **3.1** | Container invalidation / iterator crash during Pawn callbacks | **CRITICAL** | Phase 1 |
-| **3.2** | Non-standard native registration (`amx_Redirect`) | **HIGH** | Phase 1 |
-| **3.3** | AMX script ownership & multi-script collision | **HIGH** | Phase 1 |
-| **3.4** | Inverted return code failure trap in `CallPawnFunction` | **MEDIUM** | Phase 1 |
-| **3.5** | Eager & destructive capacity eviction failure | **MEDIUM** | Phase 1 |
-| **3.6** | Immediate auto-destroy on failed show (`hiddenSinceTick == 0`) | **MEDIUM** | Phase 1 |
-| **3.7** | Unchecked player ID & phantom context allocation | **LOW** | Phase 1 |
-| **3.8** | Orphaned open.mp component code (`Component.cpp`) | **LOW** | Phase 2 |
+| **3.1** | Container invalidation / iterator crash during Pawn callbacks | **CRITICAL** | Phase 1 (Resolved) |
+| **3.2** | Non-standard native registration (`amx_Redirect`) | **HIGH** | Phase 2 (Resolved) |
+| **3.3** | AMX script ownership & multi-script collision | **HIGH** | Phase 3 (Resolved) |
+| **3.4** | Inverted return code failure trap in `CallPawnFunction` | **MEDIUM** | Phase 5 |
+| **3.5** | Eager & destructive capacity eviction failure | **MEDIUM** | Phase 5 |
+| **3.6** | Immediate auto-destroy on failed show (`hiddenSinceTick == 0`) | **MEDIUM** | Phase 5 |
+| **3.7** | Unchecked player ID & phantom context allocation | **LOW** | Phase 1/4 (Partially Resolved) |
+| **3.8** | Orphaned open.mp component code (`Component.cpp`) | **LOW** | Future |
+| **3.9** | Unsafe Pawn parameter validation and signed/unsigned conversion (SUI-003) | **HIGH** | Phase 4 (Resolved) |
 
 ---
 
-## 5. Phase 1 Roadmap
+## 5. Phase Roadmap
 
-1. **Refactor Native Registration**: Transition from `amx_Redirect` to standard `amx_Register`.
-2. **Implement Safe Re-entrancy**: Convert immediate callback triggers in `ProcessTick` into a deferred queue.
-3. **AMX Context Isolation**: Store originating `AMX*` in `SUIGroup` to ensure callbacks are executed on the originating script.
-4. **Non-Destructive Eviction**: Validate required capacity before executing eviction callbacks.
-5. **State Transition Hardening**: Guarantee `hiddenSinceTick` and `lastUsedTick` invariants across all state transitions.
+1. **Phase 1 (SUI-001)**: Implemented safe re-entrancy and eliminated iterator invalidation across Pawn callback boundaries.
+2. **Phase 2 (SUI-011)**: Transitioned from `amx_Redirect` to standard `amx_Register`.
+3. **Phase 3 (SUI-002)**: Implemented strict AMX ownership, callback isolation, and safe AMX unload.
+4. **Phase 4 (SUI-003)**: Hardened Pawn native input validation, bounds checking, and memory safety.
+5. **Phase 5 (SUI-006 / SUI-004)**: Callback return semantics and non-destructive capacity overflow redesign.
+

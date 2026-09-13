@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **SUI-003**: Hardened the Pawn → C++ native boundary with comprehensive input validation and safe type conversions across all 19 natives. Status: `FIXED — runtime input validation verified`.
+  - Implemented `TryGetNonNegativeUInt32` to eliminate signed-to-unsigned wrap-around where negative Pawn cells (`-1`) were converted into `4294967295` via `static_cast<uint32_t>`. Applied to `size`, `timeout`, `maxCount`, and `threshold`.
+  - Implemented `TryGetPriority` strictly constraining priority parameters to valid domain `[0..3]` (`SUI_PRIORITY_LOW` through `SUI_PRIORITY_CRITICAL`).
+  - Implemented `TryGetStringParam` validating AMX address resolution and string bounds via `amx_GetAddr`, `amx_StrLen`, and `amx_GetString` error codes (e.g. `AMX_ERR_MEMACCESS`), preventing SIGSEGV crashes on invalid memory offsets.
+  - Hardened `CheckParams` with negative `params[0]` guards to reject malformed AMX argument vectors.
+  - Normalized boolean flags with `(params[X] != 0)` to guarantee clean truth values.
+  - Enforced atomic parameter validation in all 19 native handlers prior to invoking core mutations.
+  - Verified live runtime validation suite (`tests/native_validation/`) with 10/10 test scenarios (V1–V10) passing on a 32-bit Linux SA-MP dedicated server (`samp03svr`).
 - **SUI-002**: Implemented strict AMX ownership, callback isolation, and safe AMX unload. Status: `FIXED — runtime multi-AMX regression verified`.
   - Added non-owning pointer `AMX* ownerAmx` to `SUIGroup` tracking the originating AMX instance.
   - Updated `SUI_CreatePlayerFactoryGroup` and `SUICore::RegisterFactoryGroup` to record caller AMX and prevent group hijacking if already owned by another active AMX.
@@ -21,6 +29,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **SUI-009 (Partially Addressed)**: Replaced mutating `players[playerId]` `std::unordered_map::operator[]` lookups in group setters (`SetGroupSize`, `SetGroupPriority`, `SetGroupEvictable`, `SetIdleTimeout`) with defensive non-inserting `GetPlayerContext()` lookups to prevent phantom `PlayerContext` creation.
 
 ### Added
+- Created `tests/native_validation/TEST_PLAN.md` documenting validation test scenarios V1 through V10.
+- Created `tests/native_validation/native_validation.pwn` verifying negative parameters, invalid priorities, AMX memory safety, zero-value semantics, and boundary invariants.
 - Created `tests/amx_ownership/TEST_PLAN.md` documenting multi-AMX ownership test scenarios A1 through A6.
 - Created `tests/amx_ownership/ownership_gamemode.pwn` and `tests/amx_ownership/ownership_filterscript.pwn` verifying multi-AMX callback isolation, duplicate callback name isolation, missing callback non-fallback, anti-hijacking, and safe dynamic AMX unload with capacity repair.
 - Created `tests/REENTRANCY_TEST_PLAN.md` cataloging re-entrancy test scenarios R1 through R10.
