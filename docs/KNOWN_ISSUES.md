@@ -10,9 +10,7 @@
 
 | ID | Severity | Area | Title | Status | Planned Phase |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| ID | Severity | Area | Title | Status | Planned Phase |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **SUI-001** | Critical | Core / Concurrency | Re-entrancy / callback-driven container invalidation | `FIXED — build + Pawn compile verified, pending server runtime validation` | Phase 1 |
+| **SUI-001** | Critical | Core / Concurrency | Re-entrancy / callback-driven container invalidation | `FIXED — runtime regression verified` | Phase 1 |
 | **SUI-002** | High | AMX / Dispatch | Missing AMX ownership / ambiguous callback routing | `CONFIRMED` | Phase 1 |
 | **SUI-003** | Medium | Natives / Validation | Unsafe Pawn parameter validation and signed/unsigned conversion | `CONFIRMED` | Phase 1 |
 | **SUI-004** | Medium | Core / Capacity | Capacity arithmetic overflow risk | `CONFIRMED` | Phase 2 |
@@ -22,7 +20,7 @@
 | **SUI-008** | Medium | Core / State Machine | Failed-show hidden timestamp/state anomaly | `CONFIRMED` | Phase 1 |
 | **SUI-009** | Low | Core / Validation | Player ID validation / phantom PlayerContext creation | `PARTIALLY ADDRESSED` | Phase 1 |
 | **SUI-010** | Medium | API / Docs | Public API synchronization risk | `CONFIRMED` | Phase 0.1 / 1 |
-| **SUI-011** | High | AMX / Loading | Non-standard AMX native registration behavior | `CONFIRMED` | Phase 1 |
+| **SUI-011** | High | AMX / Loading | Non-standard AMX native registration behavior | `FIXED` | Phase 2 |
 | **SUI-012** | Low | Repo / Build | Orphaned open.mp component prototype and unused header | `CONFIRMED` | Phase 3 |
 | **SUI-013** | High | Repo / Git | Repository dependency / nested Git metadata handling | `RESOLVED` | Pre-Release |
 | **SUI-014** | Medium | QA / Tooling | Missing automated tests and CI | `CONFIRMED` | Phase 2 |
@@ -36,12 +34,11 @@
 - **ID:** SUI-001
 - **Severity:** Critical
 - **Area:** Core / Concurrency
-- **Status:** FIXED — build + Pawn compile verified, pending server runtime validation
+- **Status:** FIXED — runtime regression verified
 - **Technical Context:** `SUICore::players` is `std::unordered_map<int, PlayerContext>` and `PlayerContext::groups` is `std::unordered_map<std::string, SUIGroup>`. In `std::unordered_map`, element insertion can trigger a bucket rehash that invalidates all active iterators and references across the container.
 - **Fix Summary:** Eliminated stale container iterator and reference lifetimes across `CallPawnFunction` boundaries. `ProcessTick`, `CleanupPlayer`, and `ResetPlayer` now use stable key snapshots (`playerIds`, `groupNames`). All continuation points (`ShowGroup`, `HideGroup`, `DestroyGroupInternal`, `EvictOneHiddenGroup`, `EnsureCapacity`) revalidate and reacquire `PlayerContext` and `SUIGroup` from stable identifiers post-callback. Erase operations utilize stable keys (`players.erase(playerId)`).
 - **Lookup Helpers:** `GetPlayerContext` and `GetPlayerGroup` perform non-inserting `find()` queries. Pointers returned by these helpers are valid strictly until the next mutation/callback boundary; the helpers do not make pointers globally stable.
-- **Current behavior:** Safe re-acquisition of container elements post-callback; graceful termination if player context or group is destroyed by re-entrant callback code.
-- **Risk:** Server runtime validation against a live SA-MP server process remains pending resolution of `SUI-011` (`amx_Register`).
+- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/reentrancy_regression.pwn` (scenarios R1 through R10). All 10 scenarios passed with 0 crashes, 0 memory corruption, and clean server shutdown.
 - **Evidence:** `src/Core.cpp:38-52`, `src/Core.cpp:54-152`, `src/Core.cpp:183-360`, `src/Core.cpp:362-444`, `src/Core.cpp:478-590`, `src/Core.cpp:739-908`, `src/Core.cpp:910-1046`.
 - **Planned phase:** Phase 1
 
@@ -164,11 +161,11 @@
 - **ID:** SUI-011
 - **Severity:** High
 - **Area:** AMX / Loading
-- **Status:** CONFIRMED
-- **Current behavior:** `AmxLoad` resolves natives with `amx_FindNative` and redirects them with `amx_Redirect` instead of registering them with `amx_Register`.
-- **Risk:** If a compiled AMX does not reference a native, `amx_FindNative` returns `AMX_ERR_NOTFOUND`. Standard native table loading requires standard `amx_Register`.
-- **Evidence:** `src/main.cpp:80-102`.
-- **Planned phase:** Phase 1
+- **Status:** FIXED
+- **Fix Summary:** Replaced non-standard `amx_FindNative` / `amx_Redirect` loop in `AmxLoad` with standard `amx_Register(amx, natives, -1)`. If registration fails, an error code is returned and the AMX instance is not tracked. Removed obsolete `#include "amx/amx2.h"` from `src/main.cpp`.
+- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`). Native resolution succeeded and eliminated `Run time error 19: "File or function is not found"`, allowing regression gamemode to load and execute all tests cleanly.
+- **Evidence:** `src/main.cpp:75-89`.
+- **Planned phase:** Phase 2
 
 ---
 

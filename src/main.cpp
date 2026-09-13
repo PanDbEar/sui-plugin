@@ -1,6 +1,5 @@
 #include "plugincommon.h"
 #include "amx/amx.h"
-#include "amx/amx2.h"
 
 #include "Core.hpp"
 #include "Natives.hpp"
@@ -75,31 +74,19 @@ PLUGIN_EXPORT void PLUGIN_CALL ProcessTick()
 
 PLUGIN_EXPORT int PLUGIN_CALL AmxLoad(AMX *amx)
 {
-    SUICore::activeAmxInstances.push_back(amx);
-
-    SUICore::Debug("AmxLoad called. Redirecting SUI natives manually.");
-
-    for (int i = 0; natives[i].name != nullptr; i++)
+    int result = amx_Register(amx, natives, -1);
+    if (result != AMX_ERR_NONE)
     {
-        int index = -1;
-        int findResult = amx_FindNative(amx, natives[i].name, &index);
-
-        if (findResult == AMX_ERR_NONE)
+        if (logprintf)
         {
-            amx_Redirect(
-                amx,
-                const_cast<char*>(natives[i].name),
-                reinterpret_cast<ucell>(natives[i].func),
-                nullptr
-            );
-
-            SUICore::Debug("Redirected native %s index=%d", natives[i].name, index);
+            logprintf("[SUI] Failed to register AMX natives (error %d).", result);
         }
-        else
-        {
-            SUICore::Debug("Native %s not found in AMX table result=%d", natives[i].name, findResult);
-        }
+        SUICore::Debug("amx_Register failed with error %d", result);
+        return result;
     }
+
+    SUICore::activeAmxInstances.push_back(amx);
+    SUICore::Debug("AmxLoad: successfully registered SUI natives.");
 
     return AMX_ERR_NONE;
 }
