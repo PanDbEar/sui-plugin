@@ -253,7 +253,7 @@ Eligible candidates are ordered deterministically by:
 2. **Age**: Older `lastUsedTick` before newer.
 3. **Deterministic Tie-Breaker**: Lexicographical `groupName < other.groupName`.
 
-### 7.3. Minimal Planning and Re-entrant Execution Replanning
+### 7.3. Policy-Minimal Ordered Eviction and Re-entrant Execution Replanning
 SUI executes candidate eviction **one candidate at a time** in an iterative loop:
 1. Recompute projected capacity and remaining deficit against `targetCeiling`.
 2. Filter out candidates previously attempted in the current reservation transaction.
@@ -263,11 +263,16 @@ SUI executes candidate eviction **one candidate at a time** in an iterative loop
 6. Re-evaluate overall capacity. If capacity is now satisfied, terminate successfully; otherwise, replan with updated state.
 
 This candidate-by-candidate loop guarantees that:
-- SUI evicts only the minimal number of groups needed (no over-eviction).
-- Re-entrant mutations performed by Pawn callbacks (e.g. changing group evictability, creating or destroying groups) are immediately observed on the next replanning iteration.
-- Failed destroy callbacks are tracked in `attemptedCandidates` to prevent infinite loops.
+- **Policy-Minimal Ordered Eviction**: SUI evicts the minimal prefix of the configured eviction policy order necessary to satisfy capacity. SUI never continues evicting after the policy order has already freed enough capacity. For example, if a request needs 15 capacity and the policy order is Candidate A (size 10), B (size 8), and C (size 100), SUI evicts A and B (freeing 18 >= 15) and stops, preserving C. SUI does NOT claim C would be selected alone merely because that minimizes total group count; eviction strictly follows policy order and halts at the first sufficient prefix.
+- **Re-entrant Mutation Visibility**: Mutations performed by Pawn callbacks (e.g. changing group evictability, creating or destroying groups) are immediately observed on the next replanning iteration.
+- **Destroy Failure Forward Progress**: Failed destroy callbacks are tracked in `attemptedCandidates` to prevent infinite retry loops.
 
 ### 7.4. Multi-AMX Eviction Ownership
 When an eviction candidate was registered by an AMX script different from the script requesting capacity (e.g., a filterscript group evicted to make room for a gamemode group), `CallPawnFunction` invokes `cbDestroy` strictly within the candidate's `ownerAmx` context. AMX ownership is fully preserved across the eviction boundary.
+
+### 7.5. Scope Boundaries: Static Preflight vs. Arbitrary Callback Side Effects
+- **Static Insufficiency Guarantee**: At the beginning of an eviction attempt, if the currently eligible candidate set cannot free enough capacity to satisfy the deficit against `min(evictionThreshold, maxTextDraws)`, `EnsureCapacity` returns `false` before invoking any eviction callback. Zero candidate groups are destroyed, zero callbacks are executed, `activeTextDrawCount` is unchanged, and existing group states are preserved intact (verified by E1 and E2).
+- **Callback-Mutation Limitation**: SUI does NOT provide full transactional rollback after arbitrary Pawn callback side effects have already occurred. If candidate A is evicted, and A's `cbDestroy` callback alters other groups (e.g. marking candidate B non-evictable) such that remaining capacity becomes insufficient, replanning aborts cleanly without destroying B, but candidate A cannot be resurrected. SUI guarantees zero destruction when insufficiency is knowable before eviction begins; it does not provide rollback once arbitrary external callbacks have executed.
+
 
 

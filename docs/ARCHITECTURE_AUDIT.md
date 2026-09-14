@@ -184,33 +184,33 @@ return execResult == AMX_ERR_NONE && retval != 0;
 
 ---
 
-### 3.5. MEDIUM: Eager & Destructive Capacity Eviction
+### 3.5. MEDIUM: Eager & Destructive Capacity Eviction (SUI-007)
 
-**Location:** `src/Core.cpp:526-573` (`SUICore::EnsureCapacity`).
+**Location:** `src/Core.hpp:69-75, 119-121`, `src/Core.cpp:1197-1380` (`SUICore::EnsureCapacity`, `CollectEligibleEvictionCandidates`, `EvictCandidate`).
 
-#### Mechanism
+#### Historical Mechanism (Vulnerability)
 ```cpp
-while (ctx.activeTextDrawCount + requiredSize > ctx.evictionThreshold)
+while (true)
 {
-    if (!EvictOneHiddenGroup(ctx))
-    {
-        return false;
-    }
+    uint64_t total = (uint64_t)currentCtx->activeTextDrawCount + (uint64_t)requiredSize;
+    if (total <= currentCtx->evictionThreshold && total <= currentCtx->maxTextDraws) return true;
+    if (!EvictOneHiddenGroup(*currentCtx)) return false;
 }
 ```
+If a player requested capacity exceeding `min(evictionThreshold, maxTextDraws)` and total eligible hidden group capacity was less than the needed deficit, `EnsureCapacity` eagerly evicted and destroyed candidates one by one before discovering sufficiency was unachievable. Existing user UI was permanently destroyed for nothing, callbacks executed, and capacity was reclaimed, yet `ShowGroup` still returned `0`.
 
-#### Impact
-- If a player needs 50 textdraws, but only 20 textdraws can be reclaimed from hidden evictable groups:
-  - SUI evicts the first candidate group (destroys it).
-  - SUI evicts the second candidate group (destroys it).
-  - No further evictable groups exist; `EvictOneHiddenGroup` returns `false`.
-  - `EnsureCapacity` returns `false`, aborting `ShowGroup`.
-- **Result:** Existing user UI was permanently destroyed for nothing, without freeing enough capacity to show the requested UI.
-
-#### Recommended Phase 1 Remediation
-- Implement a two-pass eviction algorithm:
-  1. *Simulation pass*: Calculate whether total evictable hidden textdraws can satisfy `requiredSize`.
-  2. *Execution pass*: Only evict if the requirement can actually be met.
+#### Phase 9 Remediation (Resolved)
+- **Preflight Sufficiency Guarantee**: Before any candidate destruction or callback execution, SUI calculates total eligible capacity across all viable eviction candidates ($\mathcal{E}$). If $\text{Cap}(\mathcal{E}) < \Delta_{\text{needed}}$ (where $\Delta_{\text{needed}} = \text{activeTextDrawCount} + \text{requiredSize} - \min(\text{evictionThreshold}, \text{maxTextDraws})$), `EnsureCapacity` returns `false` immediately.
+  - *Postconditions on static insufficiency*: Zero candidate groups destroyed, zero callbacks invoked, `activeTextDrawCount` unchanged, existing group states untouched, incoming group remains uncreated (verified by E1 and E2).
+- **Candidate Eligibility**: A group is eligible if and only if `isCreated == true`, `isVisible == false`, `isExecutingCallback == false`, `evictable == true`, and `priority < SUI_PRIORITY_CRITICAL`.
+- **Policy Ordering Contract**: Sorted by priority ascending (`LOW [0] < NORMAL [1] < HIGH [2]`), then `lastUsedTick` ascending (older before newer), with a deterministic lexicographical tie-breaker (`groupName < other.groupName`).
+- **Policy-Minimal Ordered Eviction**: Eviction proceeds sequentially through the policy order, evicting the minimal prefix necessary to satisfy capacity and stopping immediately once the request fits (no over-eviction).
+- **Generation-Safe Execution & Re-entrancy Discipline**: `EvictCandidate` acquires candidates by `(playerId, instanceId)` and sets `isExecutingCallback = true`. No iterators, pointers, or references are retained across `CallPawnFunction`. All state is reacquired by `instanceId` post-callback.
+- **Candidate-by-Candidate Replanning**: After each candidate eviction, SUI replans against updated state, safely observing any re-entrant mutations (e.g. groups marked non-evictable or deleted in Pawn callbacks).
+- **Destroy Failure Forward Progress**: If a candidate's `cbDestroy` fails (`PawnCallResult.Success() == false`), the group is preserved and capacity is not decremented. Attempted candidates are tracked in an `attemptedCandidates` ledger (`{groupName, instanceId}`), preventing repeated infinite attempts during the same `EnsureCapacity` call.
+- **Multi-AMX Ownership**: Filterscript candidates are destroyed strictly in their `ownerAmx` context.
+- **Partial Side-Effect Limitation**: Phase 9 prevents destruction when insufficiency is knowable before eviction begins (static insufficiency). If arbitrary Pawn callback side effects alter eligibility mid-transaction after candidate destruction has started, replanning aborts safely, but already-destroyed candidates cannot be rolled back (verified by E13).
+- **Runtime Verification**: Verified across tests E1–E14 in `tests/eviction_preflight/` (14/14 PASS). Cumulative regression baseline across all 8 suites passes 116 / 116 (100%).
 
 ---
 
@@ -351,7 +351,7 @@ Phase 6 / 6.1 introduced generation tracking but permitted in-place replacement 
 | **3.2** | Non-standard native registration (`amx_Redirect`) | **HIGH** | Phase 2 (Resolved) |
 | **3.3** | AMX script ownership & multi-script collision | **HIGH** | Phase 3 (Resolved) |
 | **3.4** | Inverted return code failure trap in `CallPawnFunction` | **MEDIUM** | Phase 7 (Resolved) |
-| **3.5** | Eager & destructive capacity eviction failure | **MEDIUM** | Phase 8 |
+| **3.5** | Eager & destructive capacity eviction failure (SUI-007) | **MEDIUM** | Phase 9 (Resolved) |
 | **3.6** | Immediate auto-destroy on failed show (`hiddenSinceTick == 0`) | **MEDIUM** | Phase 8 |
 | **3.7** | Unchecked player ID & phantom context allocation | **LOW** | Phase 1/4 (Partially Resolved) |
 | **3.8** | Orphaned open.mp component code (`Component.cpp`) | **LOW** | Future |
@@ -373,6 +373,7 @@ Phase 6 / 6.1 introduced generation tracking but permitted in-place replacement 
 6. **Phase 6 (SUI-017)**: Implemented monotonic group instance generations, ABA identity resolution, and lifecycle transaction safety.
 7. **Phase 6.2 (Gate)**: Reconciled SUI-017 generation identity with SUI-002 ownership immutability and genuine removal semantics.
 8. **Phase 7 (SUI-006)**: Decoupled callback return semantics from state transition success.
-9. **Phase 8 (SUI-007 / SUI-008 / SUI-018)**: Eviction policy pre-flight sufficiency, state machine edge cases, and external UI transactional handling.
+9. **Phase 8 (SUI-005)**: Hardened player teardown transactions (`CleanupPlayer` and `ResetPlayer`), failure preservation, and re-entrant mutation blocking.
+10. **Phase 9 (SUI-007)**: Implemented non-destructive capacity eviction preflight, policy-minimal ordered eviction, and candidate-by-candidate replanning.
 
 

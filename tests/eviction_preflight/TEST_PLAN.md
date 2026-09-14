@@ -10,7 +10,7 @@ Before any existing hidden UI group is destroyed for an incoming capacity reserv
 |---|---|---|---|
 | **E1** | Sufficiency Preflight | Single eligible candidate with insufficient capacity | `ShowGroup` returns 0; candidate destroy callback = 0 calls; candidate preserved; active count unchanged. |
 | **E2** | Sufficiency Preflight | Multiple eligible candidates whose sum is insufficient | `ShowGroup` returns 0; 0 destroy callbacks across all candidates; all preserved; active count unchanged. |
-| **E3** | Minimal Planning | Request requires less than total eligible capacity | Exactly minimal number of candidates destroyed to satisfy requirement; no over-eviction. |
+| **E3** | Policy-Minimal Ordered Eviction | Request requires less than total eligible capacity | Minimal prefix of ordered candidates evicted until requirement is met; subsequent candidates preserved; no over-eviction. |
 | **E4** | Multi-Candidate Eviction | Request requires multiple candidates to satisfy | Candidates evicted sequentially in deterministic order; subsequent candidates preserved once capacity is satisfied. |
 | **E5** | Priority Ordering | LOW priority candidate evicted before NORMAL and HIGH | LOW priority candidate evicted despite having newer tick than NORMAL/HIGH candidates. |
 | **E6** | Age Ordering | Oldest candidate evicted first within same priority | Candidate with older `lastUsedTick` evicted before candidate with newer tick. |

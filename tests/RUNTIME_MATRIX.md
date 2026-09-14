@@ -90,7 +90,7 @@ This document defines the authoritative configuration, script dependencies, fixt
 - **Filterscript:** `tests/eviction_preflight/eviction_preflight_filterscript.pwn`
 - **Key Invariants:**
   1. Capacity sufficiency preflight: If total eligible capacity < needed capacity, return false, destroy NOTHING, invoke NO callbacks, and preserve all existing groups.
-  2. Minimal eviction planning: SUI evicts the minimal number of candidates necessary to satisfy capacity (no over-eviction).
+  2. Policy-minimal ordered eviction: SUI evicts the minimal prefix of ordered candidates necessary to satisfy capacity, stopping as soon as deficit is satisfied (no over-eviction).
   3. Strict eviction priority: LOW < NORMAL < HIGH, older `lastUsedTick` before newer, deterministic alphabetical tie-breaker. CRITICAL, visible, non-evictable, and callback-executing groups strictly excluded.
   4. Candidate-by-candidate replanning: Replanning runs after each candidate eviction to safely observe re-entrant state changes or failed destruction.
   5. Multi-AMX eviction ownership: Filterscript candidate destroy callbacks execute within the Filterscript's AMX context.
