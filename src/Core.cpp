@@ -9,6 +9,21 @@ extern void (*logprintf)(const char* format, ...);
 std::unordered_map<int, PlayerContext> SUICore::players;
 std::vector<AMX*> SUICore::activeAmxInstances;
 bool SUICore::debugEnabled = false;
+uint64_t SUICore::nextGroupInstanceId = 1;
+
+uint64_t SUICore::AllocateGroupInstanceId()
+{
+    if (nextGroupInstanceId == 0)
+    {
+        nextGroupInstanceId = 1;
+    }
+    uint64_t id = nextGroupInstanceId++;
+    if (id == 0)
+    {
+        id = nextGroupInstanceId++;
+    }
+    return id;
+}
 
 void SUICore::SetDebug(bool enabled)
 {
@@ -69,9 +84,10 @@ void SUICore::UnloadAmx(AMX* amx)
         {
             if (itGroup->second.ownerAmx == amx)
             {
-                Debug("UnloadAmx purging group playerid=%d group=%s isCreated=%d size=%u",
+                Debug("UnloadAmx purging group playerid=%d group=%s instance=%llu isCreated=%d size=%u",
                     playerId,
                     itGroup->first.c_str(),
+                    static_cast<unsigned long long>(itGroup->second.instanceId),
                     itGroup->second.isCreated ? 1 : 0,
                     itGroup->second.estimatedSize
                 );
@@ -123,6 +139,27 @@ SUIGroup* SUICore::GetPlayerGroup(int playerId, const std::string& groupName)
     return (it != ctx->groups.end()) ? &it->second : nullptr;
 }
 
+SUIGroup* SUICore::GetPlayerGroupIfInstance(int playerId, const std::string& groupName, uint64_t instanceId)
+{
+    if (instanceId == 0)
+    {
+        return nullptr;
+    }
+
+    auto* group = GetPlayerGroup(playerId, groupName);
+    if (!group)
+    {
+        return nullptr;
+    }
+
+    if (group->instanceId != instanceId)
+    {
+        return nullptr;
+    }
+
+    return group;
+}
+
 void SUICore::ProcessTick(uint64_t currentTick)
 {
     // Snapshot player IDs to prevent iterator invalidation if callbacks modify players map
@@ -141,8 +178,12 @@ void SUICore::ProcessTick(uint64_t currentTick)
             continue; // Player context was removed during previous callback
         }
 
-        // Snapshot candidate group names for this player
-        std::vector<std::string> candidateGroups;
+        // Snapshot candidate group names and instance IDs for this player
+        struct GroupCandidate {
+            std::string name;
+            uint64_t instanceId;
+        };
+        std::vector<GroupCandidate> candidateGroups;
         candidateGroups.reserve(ctx->groups.size());
         for (const auto& [groupName, group] : ctx->groups)
         {
@@ -150,12 +191,12 @@ void SUICore::ProcessTick(uint64_t currentTick)
             {
                 if ((currentTick - group.hiddenSinceTick) > group.idleTimeoutMs)
                 {
-                    candidateGroups.push_back(groupName);
+                    candidateGroups.push_back({groupName, group.instanceId});
                 }
             }
         }
 
-        for (const auto& groupName : candidateGroups)
+        for (const auto& cand : candidateGroups)
         {
             auto* currentCtx = GetPlayerContext(playerId);
             if (!currentCtx)
@@ -163,30 +204,31 @@ void SUICore::ProcessTick(uint64_t currentTick)
                 break; // Entire player was removed during callback
             }
 
-            auto itGroup = currentCtx->groups.find(groupName);
-            if (itGroup == currentCtx->groups.end())
+            auto* group = GetPlayerGroupIfInstance(playerId, cand.name, cand.instanceId);
+            if (!group)
             {
-                continue; // Group was destroyed or removed
+                continue; // Group was destroyed or replaced
             }
 
-            auto& group = itGroup->second;
-            if (group.isVisible || !group.isCreated || group.isExecutingCallback)
-            {
-                continue;
-            }
-
-            if ((currentTick - group.hiddenSinceTick) <= group.idleTimeoutMs)
+            if (group->isVisible || !group->isCreated || group->isExecutingCallback)
             {
                 continue;
             }
 
-            std::string cbDestroy = group.cbDestroy;
-            AMX* ownerAmx = group.ownerAmx;
-            group.isExecutingCallback = true;
+            if ((currentTick - group->hiddenSinceTick) <= group->idleTimeoutMs)
+            {
+                continue;
+            }
 
-            Debug("Idle destroy triggered playerid=%d group=%s callback=%s",
+            std::string cbDestroy = group->cbDestroy;
+            AMX* ownerAmx = group->ownerAmx;
+            uint64_t instanceId = cand.instanceId;
+            group->isExecutingCallback = true;
+
+            Debug("Idle destroy triggered playerid=%d group=%s instance=%llu callback=%s",
                 playerId,
-                groupName.c_str(),
+                cand.name.c_str(),
+                static_cast<unsigned long long>(instanceId),
                 cbDestroy.c_str()
             );
 
@@ -198,26 +240,32 @@ void SUICore::ProcessTick(uint64_t currentTick)
             auto* postCtx = GetPlayerContext(playerId);
             if (postCtx)
             {
-                auto itPostGroup = postCtx->groups.find(groupName);
-                if (itPostGroup != postCtx->groups.end())
+                auto* postGroup = GetPlayerGroupIfInstance(playerId, cand.name, instanceId);
+                if (postGroup)
                 {
-                    auto& postGroup = itPostGroup->second;
-                    postGroup.isExecutingCallback = false;
+                    postGroup->isExecutingCallback = false;
 
                     if (destroySuccess)
                     {
-                        MarkGroupDestroyed(*postCtx, postGroup);
+                        MarkGroupDestroyed(*postCtx, *postGroup);
 
-                        Debug("Idle destroy success playerid=%d group=%s activeTD=%u",
+                        Debug("Idle destroy success playerid=%d group=%s instance=%llu activeTD=%u",
                             playerId,
-                            groupName.c_str(),
+                            cand.name.c_str(),
+                            static_cast<unsigned long long>(instanceId),
                             postCtx->activeTextDrawCount
                         );
                     }
                     else
                     {
-                        Debug("Idle destroy failed playerid=%d group=%s", playerId, groupName.c_str());
+                        Debug("Idle destroy failed playerid=%d group=%s instance=%llu",
+                            playerId, cand.name.c_str(), static_cast<unsigned long long>(instanceId));
                     }
+                }
+                else
+                {
+                    Debug("[SUI] Group instance changed during idle destroy callback: playerid=%d group=%s old=%llu; aborting stale operation",
+                        playerId, cand.name.c_str(), static_cast<unsigned long long>(instanceId));
                 }
             }
         }
@@ -254,6 +302,10 @@ bool SUICore::RegisterFactoryGroup(
         }
     }
 
+    bool isNewGroup = (it == ctx.groups.end());
+    bool isReplacingCallback = (it != ctx.groups.end() && it->second.isExecutingCallback);
+    bool isUninitialized = (it != ctx.groups.end() && it->second.instanceId == 0);
+
     auto& pGroup = ctx.groups[group];
     pGroup.name = group;
     pGroup.ownerAmx = amx;
@@ -262,9 +314,20 @@ bool SUICore::RegisterFactoryGroup(
     pGroup.cbShow = cbShow;
     pGroup.cbHide = cbHide;
 
-    Debug("RegisterFactoryGroup playerid=%d group=%s ownerAmx=%p create=%s destroy=%s show=%s hide=%s",
+    if (isNewGroup || isReplacingCallback || isUninitialized)
+    {
+        pGroup.instanceId = AllocateGroupInstanceId();
+        pGroup.isExecutingCallback = false;
+        pGroup.isCreated = false;
+        pGroup.isVisible = false;
+        pGroup.hiddenSinceTick = 0;
+        pGroup.lastUsedTick = 0;
+    }
+
+    Debug("RegisterFactoryGroup playerid=%d group=%s instanceId=%llu ownerAmx=%p create=%s destroy=%s show=%s hide=%s",
         playerId,
         group.c_str(),
+        static_cast<unsigned long long>(pGroup.instanceId),
         amx,
         cbCreate.c_str(),
         cbDestroy.c_str(),
@@ -300,10 +363,12 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
     }
 
     auto& group = it->second;
+    uint64_t instanceId = group.instanceId;
 
-    Debug("ShowGroup state playerid=%d group=%s isCreated=%d isVisible=%d cbCreate=%s cbShow=%s",
+    Debug("ShowGroup state playerid=%d group=%s instance=%llu isCreated=%d isVisible=%d cbCreate=%s cbShow=%s",
         playerId,
         groupName.c_str(),
+        static_cast<unsigned long long>(instanceId),
         group.isCreated ? 1 : 0,
         group.isVisible ? 1 : 0,
         group.cbCreate.c_str(),
@@ -312,7 +377,8 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
 
     if (group.isExecutingCallback)
     {
-        Debug("ShowGroup blocked recursion playerid=%d group=%s", playerId, groupName.c_str());
+        Debug("ShowGroup blocked recursion playerid=%d group=%s instance=%llu",
+            playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
         return;
     }
 
@@ -332,8 +398,8 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
                 authorizedSize
             );
 
-            // Safely clear callback recursion flag on reacquired group
-            auto* postGroup = GetPlayerGroup(playerId, groupName);
+            // Safely clear callback recursion flag on reacquired group only if matching instance
+            auto* postGroup = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
             if (postGroup)
             {
                 postGroup->isExecutingCallback = false;
@@ -342,19 +408,20 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
         }
 
         // Re-acquire group before calling create callback
-        auto* groupBeforeCreate = GetPlayerGroup(playerId, groupName);
+        auto* groupBeforeCreate = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
         if (!groupBeforeCreate)
         {
-            Debug("ShowGroup aborted: group removed during capacity eviction playerid=%d group=%s",
-                playerId, groupName.c_str());
+            Debug("[SUI] ShowGroup aborted: group removed or replaced during capacity eviction playerid=%d group=%s old=%llu",
+                playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
             return;
         }
 
         AMX* ownerAmx = groupBeforeCreate->ownerAmx;
 
-        Debug("Calling create callback playerid=%d group=%s callback=%s",
+        Debug("Calling create callback playerid=%d group=%s instance=%llu callback=%s",
             playerId,
             groupName.c_str(),
+            static_cast<unsigned long long>(instanceId),
             cbCreate.c_str()
         );
 
@@ -371,46 +438,46 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
             return;
         }
 
-        auto itGroup = postCtx->groups.find(groupName);
-        if (itGroup == postCtx->groups.end())
+        auto* postGroup = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
+        if (!postGroup)
         {
-            Debug("ShowGroup aborted: group removed during create callback playerid=%d group=%s",
-                playerId, groupName.c_str());
+            Debug("[SUI] Group instance changed during callback: playerid=%d group=%s old=%llu; aborting stale operation",
+                playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
             return;
         }
 
-        auto& postGroup = itGroup->second;
-
         if (createSuccess)
         {
-            if (postGroup.isCreated)
+            if (postGroup->isCreated)
             {
                 Debug("ShowGroup warning: group was already created during create callback playerid=%d group=%s",
                     playerId, groupName.c_str());
-                postGroup.isExecutingCallback = false;
+                postGroup->isExecutingCallback = false;
                 return;
             }
 
             // Lock size to authorizedSize and add to accounting
-            postGroup.estimatedSize = authorizedSize;
+            postGroup->estimatedSize = authorizedSize;
             if (TryAddActiveTextDrawCount(*postCtx, authorizedSize))
             {
-                postGroup.isCreated = true;
-                Debug("Create callback success playerid=%d group=%s activeTD=%u",
+                postGroup->isCreated = true;
+                Debug("Create callback success playerid=%d group=%s instance=%llu activeTD=%u",
                     playerId,
                     groupName.c_str(),
+                    static_cast<unsigned long long>(instanceId),
                     postCtx->activeTextDrawCount
                 );
             }
             else
             {
-                Debug("Create callback accounting failed playerid=%d group=%s activeTD=%u add=%u",
+                Debug("Create callback accounting failed playerid=%d group=%s instance=%llu activeTD=%u add=%u",
                     playerId,
                     groupName.c_str(),
+                    static_cast<unsigned long long>(instanceId),
                     postCtx->activeTextDrawCount,
                     authorizedSize
                 );
-                postGroup.isExecutingCallback = false;
+                postGroup->isExecutingCallback = false;
                 return;
             }
         }
@@ -425,9 +492,11 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
     }
 
     // Re-acquire group state before checking show condition
-    auto* groupBeforeShow = GetPlayerGroup(playerId, groupName);
+    auto* groupBeforeShow = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
     if (!groupBeforeShow)
     {
+        Debug("[SUI] ShowGroup aborted before show: instance changed or removed playerid=%d group=%s old=%llu",
+            playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
         return;
     }
 
@@ -436,18 +505,17 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
         std::string cbShow = groupBeforeShow->cbShow;
         AMX* ownerAmx = groupBeforeShow->ownerAmx;
 
-        Debug("Calling show callback playerid=%d group=%s callback=%s",
+        Debug("Calling show callback playerid=%d group=%s instance=%llu callback=%s",
             playerId,
             groupName.c_str(),
+            static_cast<unsigned long long>(instanceId),
             cbShow.c_str()
         );
 
-        // Pawn callbacks may call back into SUI and mutate players/groups.
-        // Never retain container references across this boundary.
         bool showSuccess = CallPawnFunction(ownerAmx, playerId, cbShow);
 
         // Re-acquire after show callback
-        auto* postGroup = GetPlayerGroup(playerId, groupName);
+        auto* postGroup = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
         if (postGroup)
         {
             if (showSuccess)
@@ -455,9 +523,10 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
                 postGroup->isVisible = true;
                 postGroup->lastUsedTick = Utils::GetTickCountMs();
 
-                Debug("Show callback success playerid=%d group=%s",
+                Debug("Show callback success playerid=%d group=%s instance=%llu",
                     playerId,
-                    groupName.c_str()
+                    groupName.c_str(),
+                    static_cast<unsigned long long>(instanceId)
                 );
             }
             else
@@ -469,10 +538,15 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
                 );
             }
         }
+        else
+        {
+            Debug("[SUI] Group instance changed during show callback: playerid=%d group=%s old=%llu; aborting stale operation",
+                playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
+        }
     }
 
-    // Safely clear callback recursion flag on reacquired group
-    auto* finalGroup = GetPlayerGroup(playerId, groupName);
+    // Safely clear callback recursion flag on reacquired group only if instance matches
+    auto* finalGroup = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
     if (finalGroup)
     {
         finalGroup->isExecutingCallback = false;
@@ -504,10 +578,12 @@ void SUICore::HideGroup(int playerId, const std::string& groupName)
     }
 
     auto& group = it->second;
+    uint64_t instanceId = group.instanceId;
 
     if (group.isExecutingCallback)
     {
-        Debug("HideGroup blocked recursion playerid=%d group=%s", playerId, groupName.c_str());
+        Debug("HideGroup blocked recursion playerid=%d group=%s instance=%llu",
+            playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
         return;
     }
 
@@ -517,9 +593,10 @@ void SUICore::HideGroup(int playerId, const std::string& groupName)
         std::string cbHide = group.cbHide;
         AMX* ownerAmx = group.ownerAmx;
 
-        Debug("Calling hide callback playerid=%d group=%s callback=%s",
+        Debug("Calling hide callback playerid=%d group=%s instance=%llu callback=%s",
             playerId,
             groupName.c_str(),
+            static_cast<unsigned long long>(instanceId),
             cbHide.c_str()
         );
 
@@ -528,7 +605,7 @@ void SUICore::HideGroup(int playerId, const std::string& groupName)
         bool hideSuccess = CallPawnFunction(ownerAmx, playerId, cbHide);
 
         // Re-acquire player and group state after hide callback
-        auto* postGroup = GetPlayerGroup(playerId, groupName);
+        auto* postGroup = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
         if (postGroup)
         {
             postGroup->isExecutingCallback = false;
@@ -540,9 +617,10 @@ void SUICore::HideGroup(int playerId, const std::string& groupName)
                 postGroup->hiddenSinceTick = now;
                 postGroup->lastUsedTick = now;
 
-                Debug("Hide callback success playerid=%d group=%s",
+                Debug("Hide callback success playerid=%d group=%s instance=%llu",
                     playerId,
-                    groupName.c_str()
+                    groupName.c_str(),
+                    static_cast<unsigned long long>(instanceId)
                 );
             }
             else
@@ -554,12 +632,18 @@ void SUICore::HideGroup(int playerId, const std::string& groupName)
                 );
             }
         }
+        else
+        {
+            Debug("[SUI] Group instance changed during hide callback: playerid=%d group=%s old=%llu; aborting stale operation",
+                playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
+        }
     }
     else
     {
-        Debug("HideGroup skipped: already hidden playerid=%d group=%s",
+        Debug("HideGroup skipped: already hidden playerid=%d group=%s instance=%llu",
             playerId,
-            groupName.c_str()
+            groupName.c_str(),
+            static_cast<unsigned long long>(instanceId)
         );
     }
 }
@@ -611,18 +695,22 @@ void SUICore::CleanupPlayer(int playerId)
         ctx->activeTextDrawCount
     );
 
-    // Snapshot created group names to prevent iterator invalidation across callbacks
-    std::vector<std::string> groupNames;
-    groupNames.reserve(ctx->groups.size());
+    // Snapshot created group names and instance IDs to prevent iterator invalidation across callbacks
+    struct GroupItem {
+        std::string name;
+        uint64_t instanceId;
+    };
+    std::vector<GroupItem> groupItems;
+    groupItems.reserve(ctx->groups.size());
     for (const auto& [groupName, group] : ctx->groups)
     {
         if (group.isCreated)
         {
-            groupNames.push_back(groupName);
+            groupItems.push_back({groupName, group.instanceId});
         }
     }
 
-    for (const auto& groupName : groupNames)
+    for (const auto& item : groupItems)
     {
         auto* currentCtx = GetPlayerContext(playerId);
         if (!currentCtx)
@@ -631,18 +719,19 @@ void SUICore::CleanupPlayer(int playerId)
             break;
         }
 
-        auto itGroup = currentCtx->groups.find(groupName);
-        if (itGroup == currentCtx->groups.end() || !itGroup->second.isCreated)
+        auto* group = GetPlayerGroupIfInstance(playerId, item.name, item.instanceId);
+        if (!group || !group->isCreated)
         {
             continue;
         }
 
-        bool ok = DestroyGroupInternal(*currentCtx, itGroup->second, groupName);
+        bool ok = DestroyGroupInternal(*currentCtx, *group, item.name);
         if (!ok)
         {
-            Debug("CleanupPlayer warning: failed to destroy group playerid=%d group=%s",
+            Debug("CleanupPlayer warning: failed to destroy group playerid=%d group=%s instance=%llu",
                 playerId,
-                groupName.c_str()
+                item.name.c_str(),
+                static_cast<unsigned long long>(item.instanceId)
             );
         }
     }
@@ -668,18 +757,22 @@ void SUICore::ResetPlayer(int playerId)
         ctx->activeTextDrawCount
     );
 
-    // Snapshot created group names to prevent iterator invalidation across callbacks
-    std::vector<std::string> groupNames;
-    groupNames.reserve(ctx->groups.size());
+    // Snapshot created group names and instance IDs to prevent iterator invalidation across callbacks
+    struct GroupItem {
+        std::string name;
+        uint64_t instanceId;
+    };
+    std::vector<GroupItem> groupItems;
+    groupItems.reserve(ctx->groups.size());
     for (const auto& [groupName, group] : ctx->groups)
     {
         if (group.isCreated)
         {
-            groupNames.push_back(groupName);
+            groupItems.push_back({groupName, group.instanceId});
         }
     }
 
-    for (const auto& groupName : groupNames)
+    for (const auto& item : groupItems)
     {
         auto* currentCtx = GetPlayerContext(playerId);
         if (!currentCtx)
@@ -688,18 +781,19 @@ void SUICore::ResetPlayer(int playerId)
             break;
         }
 
-        auto itGroup = currentCtx->groups.find(groupName);
-        if (itGroup == currentCtx->groups.end() || !itGroup->second.isCreated)
+        auto* group = GetPlayerGroupIfInstance(playerId, item.name, item.instanceId);
+        if (!group || !group->isCreated)
         {
             continue;
         }
 
-        bool ok = DestroyGroupInternal(*currentCtx, itGroup->second, groupName);
+        bool ok = DestroyGroupInternal(*currentCtx, *group, item.name);
         if (!ok)
         {
-            Debug("ResetPlayer warning: failed to destroy group playerid=%d group=%s",
+            Debug("ResetPlayer warning: failed to destroy group playerid=%d group=%s instance=%llu",
                 playerId,
-                groupName.c_str()
+                item.name.c_str(),
+                static_cast<unsigned long long>(item.instanceId)
             );
         }
     }
@@ -804,6 +898,14 @@ bool SUICore::RecalculateActiveTextDrawCount(PlayerContext& ctx)
     if (sum > static_cast<uint64_t>(UINT32_MAX))
     {
         Debug("[SUI] RecalculateActiveTextDrawCount overflow playerid=%d", ctx.playerId);
+        ctx.activeTextDrawCount = ctx.maxTextDraws;
+        return false;
+    }
+
+    if (sum > static_cast<uint64_t>(ctx.maxTextDraws))
+    {
+        Debug("[SUI] Invariant corruption detected: tracked created groups sum (%llu) exceeds maxTextDraws (%u) playerid=%d",
+            sum, ctx.maxTextDraws, ctx.playerId);
         ctx.activeTextDrawCount = ctx.maxTextDraws;
         return false;
     }
@@ -1005,11 +1107,12 @@ bool SUICore::EvictOneHiddenGroup(PlayerContext& ctx)
 {
     int playerId = ctx.playerId;
     std::string candidateName;
+    uint64_t candidateInstanceId = 0;
     uint8_t candidatePriority = 0;
     uint64_t candidateLastUsed = 0;
     bool foundCandidate = false;
 
-    // Identify candidate by stable group name key
+    // Identify candidate by stable group name key and instanceId
     for (auto& [groupName, group] : ctx.groups)
     {
         if (!group.isCreated)
@@ -1030,6 +1133,7 @@ bool SUICore::EvictOneHiddenGroup(PlayerContext& ctx)
         if (!foundCandidate)
         {
             candidateName = groupName;
+            candidateInstanceId = group.instanceId;
             candidatePriority = group.priority;
             candidateLastUsed = group.lastUsedTick;
             foundCandidate = true;
@@ -1043,6 +1147,7 @@ bool SUICore::EvictOneHiddenGroup(PlayerContext& ctx)
         if (betterPriority || samePriorityOlder)
         {
             candidateName = groupName;
+            candidateInstanceId = group.instanceId;
             candidatePriority = group.priority;
             candidateLastUsed = group.lastUsedTick;
         }
@@ -1053,8 +1158,8 @@ bool SUICore::EvictOneHiddenGroup(PlayerContext& ctx)
         return false;
     }
 
-    // Re-acquire candidate before callback
-    auto* candidate = GetPlayerGroup(playerId, candidateName);
+    // Re-acquire candidate before callback using instanceId
+    auto* candidate = GetPlayerGroupIfInstance(playerId, candidateName, candidateInstanceId);
     if (!candidate)
     {
         return false;
@@ -1063,9 +1168,10 @@ bool SUICore::EvictOneHiddenGroup(PlayerContext& ctx)
     std::string cbDestroy = candidate->cbDestroy;
     AMX* ownerAmx = candidate->ownerAmx;
 
-    Debug("EvictOneHiddenGroup selected playerid=%d group=%s priority=%u evictable=%d lastUsed=%llu size=%u",
+    Debug("EvictOneHiddenGroup selected playerid=%d group=%s instance=%llu priority=%u evictable=%d lastUsed=%llu size=%u",
         playerId,
         candidateName.c_str(),
+        static_cast<unsigned long long>(candidateInstanceId),
         static_cast<unsigned>(candidate->priority),
         candidate->evictable ? 1 : 0,
         static_cast<unsigned long long>(candidate->lastUsedTick),
@@ -1087,32 +1193,33 @@ bool SUICore::EvictOneHiddenGroup(PlayerContext& ctx)
         return false;
     }
 
-    auto itCandidate = postCtx->groups.find(candidateName);
-    if (itCandidate == postCtx->groups.end())
+    auto* postCandidate = GetPlayerGroupIfInstance(playerId, candidateName, candidateInstanceId);
+    if (!postCandidate)
     {
-        Debug("EvictOneHiddenGroup candidate removed during callback playerid=%d group=%s",
-            playerId, candidateName.c_str());
-        return destroyed;
+        Debug("[SUI] EvictOneHiddenGroup candidate replaced or removed during callback playerid=%d group=%s old=%llu",
+            playerId, candidateName.c_str(), static_cast<unsigned long long>(candidateInstanceId));
+        return false;
     }
 
-    auto& postCandidate = itCandidate->second;
-    postCandidate.isExecutingCallback = false;
+    postCandidate->isExecutingCallback = false;
 
     if (!destroyed)
     {
-        Debug("EvictOneHiddenGroup failed destroy callback playerid=%d group=%s callback=%s",
+        Debug("EvictOneHiddenGroup failed destroy callback playerid=%d group=%s instance=%llu callback=%s",
             playerId,
             candidateName.c_str(),
+            static_cast<unsigned long long>(candidateInstanceId),
             cbDestroy.c_str()
         );
         return false;
     }
 
-    MarkGroupDestroyed(*postCtx, postCandidate);
+    MarkGroupDestroyed(*postCtx, *postCandidate);
 
-    Debug("EvictOneHiddenGroup success playerid=%d group=%s activeTD=%u",
+    Debug("EvictOneHiddenGroup success playerid=%d group=%s instance=%llu activeTD=%u",
         playerId,
         candidateName.c_str(),
+        static_cast<unsigned long long>(candidateInstanceId),
         postCtx->activeTextDrawCount
     );
 
@@ -1147,21 +1254,24 @@ bool SUICore::DestroyGroup(int playerId, const std::string& groupName)
 bool SUICore::DestroyGroupInternal(PlayerContext& ctx, SUIGroup& group, const std::string& groupName)
 {
     int playerId = ctx.playerId;
+    uint64_t instanceId = group.instanceId;
 
     if (!group.isCreated)
     {
-        Debug("DestroyGroupInternal skipped: not created playerid=%d group=%s",
+        Debug("DestroyGroupInternal skipped: not created playerid=%d group=%s instance=%llu",
             playerId,
-            groupName.c_str()
+            groupName.c_str(),
+            static_cast<unsigned long long>(instanceId)
         );
         return true;
     }
 
     if (group.isExecutingCallback)
     {
-        Debug("DestroyGroupInternal blocked: callback executing playerid=%d group=%s",
+        Debug("DestroyGroupInternal blocked: callback executing playerid=%d group=%s instance=%llu",
             playerId,
-            groupName.c_str()
+            groupName.c_str(),
+            static_cast<unsigned long long>(instanceId)
         );
         return false;
     }
@@ -1173,9 +1283,10 @@ bool SUICore::DestroyGroupInternal(PlayerContext& ctx, SUIGroup& group, const st
 
     if (group.isVisible)
     {
-        Debug("DestroyGroupInternal hiding first playerid=%d group=%s callback=%s",
+        Debug("DestroyGroupInternal hiding first playerid=%d group=%s instance=%llu callback=%s",
             playerId,
             groupName.c_str(),
+            static_cast<unsigned long long>(instanceId),
             cbHide.c_str()
         );
 
@@ -1184,19 +1295,20 @@ bool SUICore::DestroyGroupInternal(PlayerContext& ctx, SUIGroup& group, const st
         bool hideSuccess = CallPawnFunction(ownerAmx, playerId, cbHide);
 
         // Re-acquire after hide callback
-        auto* postGroup = GetPlayerGroup(playerId, groupName);
+        auto* postGroup = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
         if (!postGroup)
         {
-            Debug("DestroyGroupInternal aborted: group/player removed during hide callback playerid=%d group=%s",
-                playerId, groupName.c_str());
+            Debug("[SUI] DestroyGroupInternal aborted: group/player removed or replaced during hide callback playerid=%d group=%s old=%llu",
+                playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
             return false;
         }
 
         if (!hideSuccess)
         {
-            Debug("DestroyGroupInternal failed: hide callback failed playerid=%d group=%s",
+            Debug("DestroyGroupInternal failed: hide callback failed playerid=%d group=%s instance=%llu",
                 playerId,
-                groupName.c_str()
+                groupName.c_str(),
+                static_cast<unsigned long long>(instanceId)
             );
 
             postGroup->isExecutingCallback = false;
@@ -1208,9 +1320,10 @@ bool SUICore::DestroyGroupInternal(PlayerContext& ctx, SUIGroup& group, const st
         postGroup->lastUsedTick = postGroup->hiddenSinceTick;
     }
 
-    Debug("DestroyGroupInternal destroying playerid=%d group=%s callback=%s",
+    Debug("DestroyGroupInternal destroying playerid=%d group=%s instance=%llu callback=%s",
         playerId,
         groupName.c_str(),
+        static_cast<unsigned long long>(instanceId),
         cbDestroy.c_str()
     );
 
@@ -1222,36 +1335,37 @@ bool SUICore::DestroyGroupInternal(PlayerContext& ctx, SUIGroup& group, const st
     auto* postCtx = GetPlayerContext(playerId);
     if (!postCtx)
     {
-        Debug("DestroyGroupInternal player context removed during destroy callback playerid=%d group=%s",
-            playerId, groupName.c_str());
+        Debug("DestroyGroupInternal player context removed during destroy callback playerid=%d group=%s instance=%llu",
+            playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
         return destroySuccess;
     }
 
-    auto itGroup = postCtx->groups.find(groupName);
-    if (itGroup == postCtx->groups.end())
+    auto* finalGroup = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
+    if (!finalGroup)
     {
-        Debug("DestroyGroupInternal group removed during destroy callback playerid=%d group=%s",
-            playerId, groupName.c_str());
+        Debug("[SUI] Group instance changed during destroy callback: playerid=%d group=%s old=%llu; aborting stale operation",
+            playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
         return destroySuccess;
     }
 
-    auto& finalGroup = itGroup->second;
-    finalGroup.isExecutingCallback = false;
+    finalGroup->isExecutingCallback = false;
 
     if (!destroySuccess)
     {
-        Debug("DestroyGroupInternal failed: destroy callback failed playerid=%d group=%s",
+        Debug("DestroyGroupInternal failed: destroy callback failed playerid=%d group=%s instance=%llu",
             playerId,
-            groupName.c_str()
+            groupName.c_str(),
+            static_cast<unsigned long long>(instanceId)
         );
         return false;
     }
 
-    MarkGroupDestroyed(*postCtx, finalGroup);
+    MarkGroupDestroyed(*postCtx, *finalGroup);
 
-    Debug("DestroyGroupInternal success playerid=%d group=%s activeTD=%u",
+    Debug("DestroyGroupInternal success playerid=%d group=%s instance=%llu activeTD=%u",
         playerId,
         groupName.c_str(),
+        static_cast<unsigned long long>(instanceId),
         postCtx->activeTextDrawCount
     );
 
@@ -1321,8 +1435,9 @@ void SUICore::PrintPlayerState(int playerId)
     for (auto& [groupName, group] : ctx.groups)
     {
         logprintf(
-            "[SUI] group=%s created=%d visible=%d size=%u priority=%u timeout=%u hiddenSince=%llu",
+            "[SUI] group=%s instance=%llu created=%d visible=%d size=%u priority=%u timeout=%u hiddenSince=%llu",
             groupName.c_str(),
+            static_cast<unsigned long long>(group.instanceId),
             group.isCreated ? 1 : 0,
             group.isVisible ? 1 : 0,
             group.estimatedSize,

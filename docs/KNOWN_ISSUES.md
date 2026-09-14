@@ -26,6 +26,7 @@
 | **SUI-014** | Medium | QA / Tooling | Missing automated tests and CI | `CONFIRMED` | Phase 2 |
 | **SUI-015** | Medium | Build / Packaging | Release packaging not yet defined | `CONFIRMED` | Pre-Release |
 | **SUI-016** | Medium | Core / Resource Lifecycle | Owner-unload external UI resource cleanup limitation | `CONFIRMED` | Phase 5 |
+| **SUI-017** | High | Core / Lifecycle / Identity | Re-entrant group replacement / generation identity confusion | `FIXED — runtime regression verified` | Phase 6 |
 
 ---
 
@@ -82,7 +83,7 @@
   - Hardened capacity comparison in `EnsureCapacity` using widened 64-bit arithmetic (`(uint64_t)active + (uint64_t)required <= (uint64_t)threshold`), eliminating unsigned 32-bit addition wrap-around across multi-group accumulations.
   - Enforced `maxTextDraws` as a strict hard capacity ceiling: `SUICore::TryAddActiveTextDrawCount` validates `sum <= maxTextDraws` and rejects addition without mutating state; `EnsureCapacity` pre-rejects `requiredSize > maxTextDraws`.
   - Enforced configuration invariant `evictionThreshold <= maxTextDraws`: `SetEvictionThreshold` rejects `threshold > maxTextDraws`; `SetMaxTextDraws` rejects lowering `maxCount < evictionThreshold` or `maxCount < activeTextDrawCount`.
-  - Hardened underflow handling in `SUICore::SubtractActiveTextDrawCount`: underflow is classified as corruption containment/recovery and initiates state reconciliation via `SUICore::RecalculateActiveTextDrawCount` across tracked created groups rather than arbitrary zero-clamping.
+  - Hardened underflow handling in `SUICore::SubtractActiveTextDrawCount`: underflow is classified as corruption containment/recovery and initiates state reconciliation via `SUICore::RecalculateActiveTextDrawCount` across tracked created groups rather than arbitrary zero-clamping. If tracked corrupted state itself sums above `maxTextDraws`, `RecalculateActiveTextDrawCount` detects this as invariant corruption, logs `[SUI] Invariant corruption detected`, and clamps `activeTextDrawCount` to `maxTextDraws` to prevent exceeding hard capacity ceilings.
   - Implemented locking in `SUICore::SetGroupSize`: rejects size mutation while group is created (`isCreated == true`) or currently executing a lifecycle callback (`isExecutingCallback == true`), preventing TOCTOU accounting corruption during `cbCreate` and accounting drift upon destruction.
   - In `ShowGroup`, snapshotted `authorizedSize` prior to `EnsureCapacity`, bound `postGroup.estimatedSize` to `authorizedSize` upon creation success, and added callback re-entrancy created-guard, guaranteeing that capacity reservation matches exact accounting addition.
 - **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/capacity_arithmetic/capacity_arithmetic.pwn` (scenarios C1 through C12 and Phase 5.1 gate scenarios G1 through G7). All 19 scenarios passed with 0 crashes, 0 memory corruption, and zero accounting drift across 100 lifecycle cycles. Zero regressions in V1–V10, R1–R10, and A1–A6.
@@ -236,3 +237,24 @@
 - **Current behavior:** When an AMX instance unloads (e.g. `AmxUnload`), SUI purges all internal group state owned by that AMX and repairs `activeTextDrawCount`. However, SUI does not track or manage underlying host SA-MP PlayerTextDraw handles (`PlayerTextDrawDestroy`).
 - **Risk:** In server environments where filterscripts are dynamically reloaded (e.g., administrative script updates or modular gamemode designs), if an unloading script fails to destroy its raw PlayerTextDraw handles in `OnFilterScriptExit`, those IDs remain allocated in the SA-MP host server memory. SA-MP allocates a maximum of 256 PlayerTextDraw IDs per player; repeatedly reloading scripts with unmanaged handles will eventually exhaust player textdraw pools, causing all future UI creation to fail server-wide.
 - **Planned phase:** Phase 5
+
+---
+
+### SUI-017: Re-entrant group replacement / generation identity confusion
+- **ID:** SUI-017
+- **Severity:** High
+- **Area:** Core / Lifecycle / Identity
+- **Status:** FIXED — runtime regression verified
+- **Root Cause:** A group name is an addressable string key within a `PlayerContext`, not a unique logical lifecycle identity. If an outer lifecycle transaction (`ShowGroup`, `HideGroup`, `DestroyGroupInternal`, `EvictOneHiddenGroup`, `ProcessTick`, `CleanupPlayer`, `ResetPlayer`) invoked arbitrary Pawn code and that callback caused the group to be destroyed/reset and re-registered under the same `(playerId, groupName)`, looking up the group purely by name upon callback return re-acquired the replacement group (an ABA identity collision). The outer transaction would then proceed to mutate the replacement's state (`isCreated`, `isVisible`, `hiddenSinceTick`), improperly clear its re-entrancy mutex flag (`isExecutingCallback`), debit/credit capacity against the wrong lifetime, or erase the replacement. Raw pointer addresses could not be used as identity because `std::unordered_map` bucket node allocation reuses freed memory addresses.
+- **Fix Summary:**
+  - Added a private, internal 64-bit `instanceId` field to `struct SUIGroup` (non-Pawn-visible). `0` represents uninitialized/invalid.
+  - Implemented a plugin-lifetime monotonic counter `SUICore::nextGroupInstanceId = 1` and allocator `SUICore::AllocateGroupInstanceId()`. Safe wrap detection skips `0` on overflow.
+  - In `SUICore::RegisterFactoryGroup`, allocated a new monotonic `instanceId` upon initial insertion (`it == ctx.groups.end()`), if `instanceId == 0`, or if re-registration occurs while the existing group is actively executing a callback (`isExecutingCallback == true`). Duplicate registrations outside callbacks retain their existing `instanceId` to support callback string updates without altering logical identity.
+  - Implemented lookup helper `SUICore::GetPlayerGroupIfInstance(playerId, groupName, instanceId)` enforcing `same name ≠ same group` unless `instanceId` also matches.
+  - Audited all 7 callback boundaries across `ShowGroup` (create and show boundaries), `HideGroup` (hide boundary), `DestroyGroupInternal` (hide and destroy boundaries), `EvictOneHiddenGroup` (eviction destroy boundary), and `ProcessTick` (idle destroy boundary): outer transactions capture `instanceId`, re-verify matching identity after each callback, and immediately abort if the instance changed or was removed.
+  - Aborted transactions never clear `isExecutingCallback` on replacement instances, never mutate replacement creation or visibility flags, never invoke stale subsequent callbacks, and never add or subtract accounting against replacement generations.
+  - Updated `CleanupPlayer` and `ResetPlayer` candidate snapshots to record `{groupName, instanceId}` tuples, preventing identity confusion during batch group destruction.
+- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/group_identity/group_identity.pwn` with filterscript `group_identity_filterscript.pwn` across scenarios ID1 through ID10. All 10 scenarios passed with 0 crashes, 0 memory corruption, and zero accounting drift across 100 rapid replacement cycles. Verified zero regressions across SUI-001 (R1–R10), SUI-002 (A1–A6), SUI-003 (V1–V10), and SUI-004 (C1–C12 + G1–G7).
+- **Evidence:** `src/Core.hpp:16, 53, 58, 62`, `src/Core.cpp:12-25, 124-140, 163-260, 270-340, 350-540, 550-640, 700-790, 1110-1225, 1250-1375`, `tests/group_identity/`.
+- **Planned phase:** Phase 6
+

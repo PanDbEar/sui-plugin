@@ -301,6 +301,22 @@ Furthermore, string parameters were retrieved via an unchecked `GetStringParam` 
 
 ---
 
+### 3.11. HIGH: Re-entrant Group Replacement / Generation Identity Confusion (SUI-017)
+
+**Location:** `src/Core.hpp:16, 53, 58, 62`, `src/Core.cpp` (`ShowGroup`, `HideGroup`, `DestroyGroupInternal`, `EvictOneHiddenGroup`, `ProcessTick`, `CleanupPlayer`, `ResetPlayer`).
+
+#### Mechanism
+Group names are addressable string keys within `PlayerContext::groups`, not unique object identities. When an outer lifecycle operation invokes a Pawn callback, arbitrary script code can destroy, reset, or replace that group under the exact same name. Upon returning from the callback, reacquiring the group purely by name reacquired the replacement generation (an ABA identity collision). The outer transaction would then erroneously mutate replacement state, clear re-entrancy mutex flags, or debit/credit capacity against the wrong lifetime. Raw pointer addresses could not serve as identity because `std::unordered_map` bucket node allocation reuses freed memory addresses.
+
+#### Phase 6 Remediation (Resolved)
+- Added a private, non-Pawn-visible 64-bit `uint64_t instanceId = 0` to `SUIGroup` with monotonic plugin-lifetime allocation via `SUICore::AllocateGroupInstanceId()`.
+- In `SUICore::RegisterFactoryGroup`, assigned a new `instanceId` upon initial insertion, if `instanceId == 0`, or if re-registration occurs while the group is actively executing a callback (`isExecutingCallback == true`).
+- Implemented helper `SUICore::GetPlayerGroupIfInstance(playerId, groupName, instanceId)`.
+- Enforced post-callback identity verification across all 7 callback boundaries in `ShowGroup`, `HideGroup`, `DestroyGroupInternal`, `EvictOneHiddenGroup`, and `ProcessTick`. Stale operations immediately abort upon identity mismatch without mutating replacement state or corrupting capacity accounting.
+- Updated `CleanupPlayer` and `ResetPlayer` snapshots to preserve `{groupName, instanceId}` tuples.
+
+---
+
 ## 4. Risk & Severity Matrix
 
 | ID | Issue | Severity | Target Phase |
@@ -308,13 +324,14 @@ Furthermore, string parameters were retrieved via an unchecked `GetStringParam` 
 | **3.1** | Container invalidation / iterator crash during Pawn callbacks | **CRITICAL** | Phase 1 (Resolved) |
 | **3.2** | Non-standard native registration (`amx_Redirect`) | **HIGH** | Phase 2 (Resolved) |
 | **3.3** | AMX script ownership & multi-script collision | **HIGH** | Phase 3 (Resolved) |
-| **3.4** | Inverted return code failure trap in `CallPawnFunction` | **MEDIUM** | Phase 6 |
-| **3.5** | Eager & destructive capacity eviction failure | **MEDIUM** | Phase 7 |
-| **3.6** | Immediate auto-destroy on failed show (`hiddenSinceTick == 0`) | **MEDIUM** | Phase 7 |
+| **3.4** | Inverted return code failure trap in `CallPawnFunction` | **MEDIUM** | Phase 7 |
+| **3.5** | Eager & destructive capacity eviction failure | **MEDIUM** | Phase 8 |
+| **3.6** | Immediate auto-destroy on failed show (`hiddenSinceTick == 0`) | **MEDIUM** | Phase 8 |
 | **3.7** | Unchecked player ID & phantom context allocation | **LOW** | Phase 1/4 (Partially Resolved) |
 | **3.8** | Orphaned open.mp component code (`Component.cpp`) | **LOW** | Future |
 | **3.9** | Unsafe Pawn parameter validation and signed/unsigned conversion (SUI-003) | **HIGH** | Phase 4 (Resolved) |
 | **3.10** | Capacity arithmetic overflow and accounting invariant safety (SUI-004) | **MEDIUM** | Phase 5 (Resolved) |
+| **3.11** | Re-entrant group replacement / generation identity confusion (SUI-017) | **HIGH** | Phase 6 (Resolved) |
 
 ---
 
@@ -325,6 +342,7 @@ Furthermore, string parameters were retrieved via an unchecked `GetStringParam` 
 3. **Phase 3 (SUI-002)**: Implemented strict AMX ownership, callback isolation, and safe AMX unload.
 4. **Phase 4 (SUI-003)**: Hardened Pawn native input validation, bounds checking, and memory safety.
 5. **Phase 5 (SUI-004)**: Hardened capacity arithmetic, overflow prevention, and accounting invariants.
-6. **Phase 6 (SUI-006)**: Decouple callback return semantics from state transition success.
+6. **Phase 6 (SUI-017)**: Implemented monotonic group instance generations, ABA identity resolution, and lifecycle transaction safety.
+7. **Phase 7 (SUI-006)**: Decouple callback return semantics from state transition success.
 
 

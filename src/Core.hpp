@@ -14,6 +14,7 @@ enum SUIPriority : uint8_t {
 
 struct SUIGroup {
     std::string name;
+    uint64_t instanceId = 0;
 
     std::string cbCreate;
     std::string cbDestroy;
@@ -51,15 +52,18 @@ public:
     static std::unordered_map<int, PlayerContext> players;
     static std::vector<AMX*> activeAmxInstances;
     static bool debugEnabled;
+    static uint64_t nextGroupInstanceId;
 
     static void Debug(const char* format, ...);
     static void SetDebug(bool enabled);
 
+    static uint64_t AllocateGroupInstanceId();
     static bool IsAmxActive(AMX* amx);
     static void UnloadAmx(AMX* amx);
 
     static PlayerContext* GetPlayerContext(int playerId);
     static SUIGroup* GetPlayerGroup(int playerId, const std::string& groupName);
+    static SUIGroup* GetPlayerGroupIfInstance(int playerId, const std::string& groupName, uint64_t instanceId);
 
     static void ProcessTick(uint64_t currentTick);
     
