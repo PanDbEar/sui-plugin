@@ -76,16 +76,16 @@ public OnGameModeInit()
     Test_PV2_CellminRejection();
     Test_PV3_BoundaryOutOfRange();
     Test_PV4_CellmaxRejection();
-    Test_PV5_InvalidPlayerIdSentinel();
-    Test_PV6_PlayerZeroValidLifecycle();
-    Test_PV7_Player999ValidLifecycle();
-    Test_PV8_NoCallbacksOnInvalidRegistration();
-    Test_PV9_NoPhantomContextViaSetters();
+    Test_PV5_Sentinel();
+    Test_PV6_PlayerZero();
+    Test_PV7_Player999();
+    Test_PV8_NoCallbacks();
+    Test_PV9_NoPhantom();
     Test_PV10_SideEffectFreeQueries();
-    Test_PV11_ValidNoContextCleanupReset();
-    Test_PV12_InvalidCleanupResetRejection();
-    Test_PV13_RepeatedInvalidIdStressLoop();
-    Test_PV14_FullNativeMatrixCoverage();
+    Test_PV11_ValidTeardown();
+    Test_PV12_InvalidTeardown();
+    Test_PV13_StressLoop();
+    Test_PV14_FullMatrix();
 
     PrintSummaryAndExit();
     return 1;
@@ -226,7 +226,7 @@ Test_PV4_CellmaxRejection()
 // ----------------------------------------------------------------------------
 // PV5: INVALID_PLAYER_ID (65535) Sentinel Rejection
 // ----------------------------------------------------------------------------
-Test_PV5_InvalidPlayerIdSentinel()
+Test_PV5_Sentinel()
 {
     new badId = INVALID_PLAYER_ID;
     new allZero = 1;
@@ -255,7 +255,7 @@ Test_PV5_InvalidPlayerIdSentinel()
 // ----------------------------------------------------------------------------
 // PV6: Player 0 Valid Lifecycle (Lower Valid Boundary)
 // ----------------------------------------------------------------------------
-Test_PV6_PlayerZeroValidLifecycle()
+Test_PV6_PlayerZero()
 {
     new pid = 0;
     g_pv6_create_calls = 0;
@@ -305,7 +305,7 @@ Test_PV6_PlayerZeroValidLifecycle()
 // ----------------------------------------------------------------------------
 // PV7: Player 999 Valid Lifecycle (Upper Valid Boundary)
 // ----------------------------------------------------------------------------
-Test_PV7_Player999ValidLifecycle()
+Test_PV7_Player999()
 {
     new pid = 999;
     g_pv7_create_calls = 0;
@@ -353,7 +353,7 @@ Test_PV7_Player999ValidLifecycle()
 // ----------------------------------------------------------------------------
 // PV8: Invalid Registration Does Not Invoke Callbacks
 // ----------------------------------------------------------------------------
-Test_PV8_NoCallbacksOnInvalidRegistration()
+Test_PV8_NoCallbacks()
 {
     g_pv8_create_calls = 0;
     g_pv8_destroy_calls = 0;
@@ -390,7 +390,7 @@ Test_PV8_NoCallbacksOnInvalidRegistration()
 // ----------------------------------------------------------------------------
 // PV9: Invalid Setters Do Not Create Phantom PlayerContext
 // ----------------------------------------------------------------------------
-Test_PV9_NoPhantomContextViaSetters()
+Test_PV9_NoPhantom()
 {
     new r1 = SUI_SetMaxTextDraws(-1, 150);
     new r2 = SUI_SetEvictionThreshold(-1, 120);
@@ -443,7 +443,7 @@ Test_PV10_SideEffectFreeQueries()
 // ----------------------------------------------------------------------------
 // PV11: Valid-No-Context Cleanup / Reset Returns 1 (Idempotent Success)
 // ----------------------------------------------------------------------------
-Test_PV11_ValidNoContextCleanupReset()
+Test_PV11_ValidTeardown()
 {
     // Players 50 and 51 have never had any groups registered or context allocated
     new r1 = SUI_CleanupPlayer(50);
@@ -467,7 +467,7 @@ Test_PV11_ValidNoContextCleanupReset()
 // ----------------------------------------------------------------------------
 // PV12: Invalid Cleanup / Reset Rejection Returns 0
 // ----------------------------------------------------------------------------
-Test_PV12_InvalidCleanupResetRejection()
+Test_PV12_InvalidTeardown()
 {
     new allZero = 1;
 
@@ -497,7 +497,7 @@ Test_PV12_InvalidCleanupResetRejection()
 // ----------------------------------------------------------------------------
 // PV13: Repeated Invalid-ID Stress Loop
 // ----------------------------------------------------------------------------
-Test_PV13_RepeatedInvalidIdStressLoop()
+Test_PV13_StressLoop()
 {
     new invalidIds[5];
     invalidIds[0] = -100;
@@ -544,7 +544,7 @@ Test_PV13_RepeatedInvalidIdStressLoop()
 // ----------------------------------------------------------------------------
 // PV14: Full Matrix Coverage Across All 19 Natives
 // ----------------------------------------------------------------------------
-Test_PV14_FullNativeMatrixCoverage()
+Test_PV14_FullMatrix()
 {
     // Native 1: SUI_SetDebug (no player ID parameter)
     new rDebug = SUI_SetDebug(true);

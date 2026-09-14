@@ -79,7 +79,7 @@ When a group is hidden with `SUI_HideGroup`:
 
 ### 1. Define Public Callbacks in Pawn
 
-Callbacks **must** be `public` and return `1` on success:
+Callbacks **must** be declared `public`. In accordance with SUI-006, lifecycle state transitions depend strictly on AMX execution success (`AMX_ERR_NONE`), not Pawn return values (return values are informational and do not veto transitions):
 
 ```pawn
 new PlayerText:gLoginUI[MAX_PLAYERS] = { INVALID_PLAYER_TEXT_DRAW, ... };
@@ -175,15 +175,19 @@ public OnPlayerDisconnect(playerid, reason)
 | `SUI_ShowGroup` | Show group (creating if not yet created) |
 | `SUI_HideGroup` | Hide group and begin idle destruction timer |
 | `SUI_DestroyGroup` | Immediately hide and destroy a group |
+| `SUI_TouchGroup` | Touch group to refresh LRU eviction activity timestamp |
 | `SUI_CleanupPlayer` | Clean up all groups when player disconnects |
 | `SUI_ResetPlayer` | Reset all groups for an active player |
 | `SUI_SetIdleTimeout` | Configure idle destruction duration (ms) |
 | `SUI_SetGroupSize` | Declare number of textdraws in group |
 | `SUI_SetGroupPriority` | Set eviction priority (`LOW`, `NORMAL`, `HIGH`, `CRITICAL`) |
 | `SUI_SetGroupEvictable` | Toggle automatic capacity eviction eligibility |
+| `SUI_SetMaxTextDraws` | Configure maximum active player textdraw budget |
+| `SUI_SetEvictionThreshold` | Configure eviction high-water mark trigger threshold |
 | `SUI_GetActiveTextDrawCount` | Query current active textdraw count |
 | `SUI_IsGroupCreated` | Check if group textdraws are allocated |
 | `SUI_IsGroupVisible` | Check if group is currently visible |
+| `SUI_IsGroupEvictable` | Check if group is eligible for eviction |
 | `SUI_PrintPlayerState` | Print debug snapshot of player state |
 | `SUI_SetDebug` | Enable / disable verbose debug logs |
 

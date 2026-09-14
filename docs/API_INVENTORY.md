@@ -1,6 +1,6 @@
 # SUI — Public API & Symbol Inventory
 
-**Document Version:** 1.0.0 (Phase 0.1 Baseline)  
+**Document Version:** 1.12.0 (Phase 12 Synchronized Baseline)  
 **Type:** Engineering Synchronization Ledger  
 **Primary Source Evidence:** `src/main.cpp`, `src/Natives.cpp`, `src/Natives.hpp`, `src/Core.hpp`, `pawn/sui.inc`
 
@@ -45,15 +45,15 @@
 
 SUI invokes user gamemode callbacks via AMX public function resolution (`amx_FindPublic` + `amx_Exec`).
 
-| Callback Name | Pawn Signature | Invocation Trigger | Expected Return Value | Current Failure Behavior |
+| Callback Name | Pawn Signature | Invocation Trigger | Return Semantics | Failure Behavior |
 | :--- | :--- | :--- | :--- | :--- |
-| `cbCreate` | `public cbCreate(playerid)` | `SUI_ShowGroup` (if uncreated) | `!= 0` (non-zero) | If `0`, `group.isCreated` remains `false`; allocation aborted. |
-| `cbDestroy` | `public cbDestroy(playerid)` | `ProcessTick` (idle), `DestroyGroup`, `EvictOneHiddenGroup`, `CleanupPlayer` | `!= 0` (non-zero) | If `0`, state not cleaned; eviction fails; capacity not reclaimed. |
-| `cbShow` | `public cbShow(playerid)` | `SUI_ShowGroup` (after create) | `!= 0` (non-zero) | If `0`, `group.isVisible` remains `false`; timing anomaly SUI-008 triggered. |
-| `cbHide` | `public cbHide(playerid)` | `SUI_HideGroup`, `DestroyGroupInternal` | `!= 0` (non-zero) | If `0`, `group.isVisible` remains `true`; hide aborted. |
+| `cbCreate` | `public cbCreate(playerid)` | `SUI_ShowGroup` (if uncreated) | Informational (`cell` value ignored) | If missing or `amx_Exec` fails, `group.isCreated` remains `false`; allocation aborted. |
+| `cbDestroy` | `public cbDestroy(playerid)` | `ProcessTick` (idle), `DestroyGroup`, `EvictOneHiddenGroup`, `CleanupPlayer` | Informational (`cell` value ignored) | If missing or `amx_Exec` fails, state and active counts are still cleaned up to prevent capacity leaks. |
+| `cbShow` | `public cbShow(playerid)` | `SUI_ShowGroup` (after create) | Informational (`cell` value ignored) | If missing or `amx_Exec` fails, show is aborted; hidden lifetime initialized via SUI-008. |
+| `cbHide` | `public cbHide(playerid)` | `SUI_HideGroup`, `DestroyGroupInternal` | Informational (`cell` value ignored) | If missing or `amx_Exec` fails, hide is aborted. |
 
-> [!WARNING]
-> In Pawn, callbacks commonly omit return statements (evaluating to 0). SUI currently treats return `0` as an operation failure. See Issue **SUI-006**.
+> [!NOTE]
+> Following **SUI-006**, callback return values are purely informational and do not veto lifecycle state transitions. A transition succeeds if and only if `amx_Exec` returns `AMX_ERR_NONE`. This prevents accidental UI deadlocks when callbacks omit `return 1;` (evaluating to 0 in Pawn).
 
 ---
 
@@ -100,4 +100,4 @@ Composes 5 real C++ natives sequentially:
 5. `SUI_SetGroupEvictable(playerid, group, evictable)`
 
 **Analysis:**
-The helper introduces no new runtime behavior; it is purely syntactic sugar for gamemode convenience.
+The helper introduces no new runtime behavior; it is purely syntactic sugar for gamemode convenience. In Phase 12, it was updated to check the return value of `SUI_CreatePlayerFactoryGroup` and propagate `0` on registration failure (or `1` on success).

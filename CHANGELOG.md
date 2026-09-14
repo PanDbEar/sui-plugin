@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **SUI-010**: Public Pawn API Synchronization, Return Contract Truthfulness, Include/Documentation Alignment, and Example Compatibility. Status: `FIXED — public API synchronization verified`.
+  - Audited and synchronized the complete public Pawn API surface across `src/main.cpp` (AMX registration), `src/Natives.hpp` / `src/Natives.cpp` (declarations, definitions, parameter checking), `pawn/sui.inc` (declarations, stocks, tags), `docs/API_REFERENCE.md`, `docs/API_INVENTORY.md`, and `README.md`.
+  - Verified exact 1-to-1 correspondence across all 19 public C++ natives (18 player-specific + 1 global) and 1 stock helper (`SUI_RegisterGroup`).
+  - Formalized return contracts: untagged natives return `1` on success and `0` on error/parameter rejection; `bool:` tagged queries return `true` or `false`.
+  - Clarified zero idle timeout semantics (`timeout_ms = 0` triggers immediate destruction on next server tick, does not disable idle timer).
+  - Hardened `SUI_RegisterGroup` stock helper to check `SUI_CreatePlayerFactoryGroup` return value and propagate `0` on failure instead of silently continuing.
+  - Aligned callback documentation across `README.md`, `API_REFERENCE.md`, and `API_INVENTORY.md` to reflect SUI-006 decoupled execution semantics (transitions depend strictly on `AMX_ERR_NONE`, Pawn return value is purely informational).
+  - Migrated shipped example script `examples/factory_login_example.pwn` from open.mp include to SA-MP standard `a_samp.inc`, providing fallback definitions for `INVALID_PLAYER_TEXT_DRAW` and `TEXT_DRAW_ALIGN_CENTER`.
+  - Shortened overlength function names in `tests/player_id_validation/player_id_validation.pwn` to eliminate Pawn compiler symbol truncation warnings.
+  - Verified clean compilation of all 17 `.pwn` scripts (1 example + 16 test scripts) with Pawn compiler 3.2.3664 (0 errors, 0 warnings).
 - **SUI-009**: Player ID Domain Validation, Phantom PlayerContext Prevention, and Native Trust-Boundary Hardening. Status: `FIXED — runtime player ID validation verified`.
   - Defined authoritative player-ID domain `0 <= playerId < 1000` (`SUI_MAX_PLAYERS = 1000`) in `src/Utils.hpp` via `Utils::IsValidPlayerId(int playerId)` and `Utils::TryGetPlayerId(cell value, int& out)`.
   - Hardened all 18 player-accepting Pawn native handlers in `src/Natives.cpp` with strict, early boundary checks immediately following `CheckParams` and before any AMX address translation or core dispatch.
@@ -104,6 +114,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **SUI-011**: Corrected AMX native registration in `AmxLoad`. Replaced non-standard `amx_FindNative` / `amx_Redirect` loop with standard `amx_Register(amx, natives, -1)`, properly resolving SUI natives in the host server's AMX native table and unblocking AMX script execution (eliminating `Run time error 19: "File or function is not found"`). Removed obsolete `#include "amx/amx2.h"` from `src/main.cpp`.
 
 ### Added
+- Created `tests/api_contract/TEST_PLAN.md` documenting static API contract verification scenarios AP1 through AP8.
+- Created `tests/api_contract/check_api_surface.py` implementing automated programmatic validation across 7 API consistency checks (AP1 native count, AP2 registration-include parity, AP3 stock distinction, AP4 parameter count match, AP5 handler declarations/definitions, AP6 documentation sync, AP7 priority constant sync).
 - Created `tests/player_id_validation/TEST_PLAN.md` documenting player ID domain validation, boundary checks, and phantom context prevention test scenarios PV1 through PV14.
 - Created `tests/player_id_validation/player_id_validation.pwn` verifying negative player IDs (PV1), signed cellmin (PV2), upper boundary out-of-range 1000 (PV3), signed cellmax (PV4), INVALID_PLAYER_ID sentinel 65535 (PV5), lower valid boundary player 0 lifecycle (PV6), upper valid boundary player 999 lifecycle (PV7), callback suppression on invalid registration (PV8), phantom context prevention via setters (PV9), side-effect-free queries (PV10), idempotent teardown on valid empty IDs (PV11), teardown rejection on invalid IDs (PV12), repeated invalid ID stress loop (PV13), and full matrix coverage across all 19 public natives (PV14).
 - Created `tests/show_failure_lifecycle/TEST_PLAN.md` documenting failed-show hidden lifetime timing, continuous hidden preservation, hide transitions, and tick-state consistency test scenarios F1 through F10.
@@ -126,6 +138,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Created `tests/reentrancy_regression.pwn` providing regression test coverage for re-entrant lifecycle operations across Pawn callbacks (compiled and verified with Pawn compiler 3.2.3664).
 
 ### Documentation
+- Synchronized `README.md`, `docs/API_REFERENCE.md`, and `docs/API_INVENTORY.md` to document the complete set of 19 public natives (adding `SUI_SetMaxTextDraws`, `SUI_SetEvictionThreshold`, `SUI_IsGroupEvictable`, `SUI_TouchGroup` to README overview table), formalized return contracts (untagged natives return `1` on success and `0` on failure), clarified zero idle timeout semantics (`timeout_ms = 0` immediate destruction on next tick), and aligned callback return semantics with SUI-006.
 - Updated `docs/API_REFERENCE.md`, `docs/ARCHITECTURE.md`, `docs/ARCHITECTURE_AUDIT.md`, `docs/KNOWN_ISSUES.md`, and `tests/RUNTIME_MATRIX.md` documenting player ID domain validation (`[0..999]`), trust-boundary hardening, phantom context prevention, teardown idempotency semantics, and live runtime test suite 10 (`player_id_validation`).
 - Updated `docs/API_REFERENCE.md`, `docs/ARCHITECTURE.md`, `docs/KNOWN_ISSUES.md`, and `docs/ARCHITECTURE_AUDIT.md` reflecting decoupled callback return semantics, `PawnCallResult` model, conservative failure policies, and cataloged SUI-018.
 - Created authoritative engineering issue tracker `docs/KNOWN_ISSUES.md` cataloging issues SUI-001 through SUI-015.

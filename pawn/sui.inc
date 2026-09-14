@@ -94,10 +94,11 @@ native SUI_ResetPlayer(playerid);
 
 /**
  * Sets the idle timeout in milliseconds before a hidden group is automatically destroyed.
+ * A value of 0 schedules immediate reclamation on the next server tick (does not disable idle timeout).
  * 
  * @param playerid Target player ID
  * @param group Group name
- * @param timeout_ms Timeout duration in milliseconds (default: 30000)
+ * @param timeout_ms Timeout duration in milliseconds (default: 30000; 0 = next-tick reclamation)
  * @return 1 on success, 0 on failure
  */
 native SUI_SetIdleTimeout(playerid, const group[], timeout_ms);
@@ -204,7 +205,7 @@ native bool:SUI_TouchGroup(playerid, const group[]);
  * Dumps the player's full SUI state and group table to server console/log.
  * 
  * @param playerid Target player ID
- * @return 1
+ * @return 1 on success, 0 on invalid playerid
  */
 native SUI_PrintPlayerState(playerid);
 
@@ -212,7 +213,7 @@ native SUI_PrintPlayerState(playerid);
  * Toggles verbose debug logging from the plugin.
  * 
  * @param enabled True to enable debug logs, false to disable
- * @return 1
+ * @return 1 on success, 0 on parameter error
  */
 native SUI_SetDebug(bool:enabled);
 
@@ -232,10 +233,10 @@ native SUI_SetDebug(bool:enabled);
  * @param cbShow Public show callback name
  * @param cbHide Public hide callback name
  * @param size Estimated textdraw count (default: 1)
- * @param timeout_ms Idle destruction timeout in ms (default: 30000)
+ * @param timeout_ms Idle destruction timeout in ms (default: 30000; 0 = next-tick reclamation)
  * @param priority Eviction priority (default: SUI_PRIORITY_NORMAL)
  * @param evictable Whether group is evictable (default: true)
- * @return 1 on success
+ * @return 1 on success, 0 on registration failure
  */
 stock SUI_RegisterGroup(
     playerid,
@@ -250,7 +251,10 @@ stock SUI_RegisterGroup(
     bool:evictable = true
 )
 {
-    SUI_CreatePlayerFactoryGroup(playerid, group, cbCreate, cbDestroy, cbShow, cbHide);
+    if (!SUI_CreatePlayerFactoryGroup(playerid, group, cbCreate, cbDestroy, cbShow, cbHide))
+    {
+        return 0;
+    }
     SUI_SetGroupSize(playerid, group, size);
     SUI_SetIdleTimeout(playerid, group, timeout_ms);
     SUI_SetGroupPriority(playerid, group, priority);

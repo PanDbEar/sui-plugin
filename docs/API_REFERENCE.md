@@ -125,7 +125,7 @@ Performs non-terminal reset of all SUI groups and counters for an active connect
 native SUI_SetIdleTimeout(playerid, const group[], timeout_ms);
 ```
 Configures the duration in milliseconds that a group remains allocated while hidden before being automatically destroyed.
-- **`timeout_ms`**: Must be a non-negative integer (`>= 0`). Negative values are rejected and return `0`.
+- **`timeout_ms`**: Must be a non-negative integer (`>= 0`). Negative values are rejected and return `0`. A value of `0` schedules immediate reclamation on the next server tick where elapsed time > 0 (it does not disable idle reclamation).
 - **Default**: `30000` (30 seconds).
 - **Returns**: `1` on success, `0` on validation error or group not found.
 
@@ -231,6 +231,7 @@ Updates the group's last-used timestamp to the current tick.
 native SUI_PrintPlayerState(playerid);
 ```
 Dumps full player status (active textdraws, max limit, threshold, and group states) to the server console/log.
+- **Returns**: `1` on success, `0` if `playerid` is outside the valid domain `[0..999]`.
 
 ---
 
@@ -239,6 +240,7 @@ Dumps full player status (active textdraws, max limit, threshold, and group stat
 native SUI_SetDebug(bool:enabled);
 ```
 Enables or disables plugin-level debug output to server logs.
+- **Returns**: `1` on success, `0` on parameter error.
 
 ---
 
@@ -260,3 +262,4 @@ stock SUI_RegisterGroup(
 );
 ```
 Convenience function that combines registration, size declaration, idle timeout, priority, and evictability configuration into a single call.
+- **Returns**: `1` on success, `0` if `SUI_CreatePlayerFactoryGroup` fails (e.g. invalid player ID, group already exists under another owner, or re-registration during active callback).

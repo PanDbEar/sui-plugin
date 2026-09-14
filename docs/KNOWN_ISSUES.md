@@ -19,7 +19,7 @@
 | **SUI-007** | Medium | Core / Eviction | Destructive capacity eviction without pre-flight sufficiency | `FIXED — runtime eviction preflight verified` | Phase 9 |
 | **SUI-008** | Medium | Core / State Machine | Failed-show hidden timestamp/state anomaly | `FIXED — runtime hidden-lifecycle timing verified` | Phase 10 |
 | **SUI-009** | Low | Core / Validation | Player ID validation / phantom PlayerContext creation | `FIXED — runtime player ID validation verified` | Phase 11 |
-| **SUI-010** | Medium | API / Docs | Public API synchronization risk | `CONFIRMED` | Phase 0.1 / 1 |
+| **SUI-010** | Medium | API / Docs | Public API synchronization risk | `FIXED — public API synchronization verified` | Phase 12 |
 | **SUI-011** | High | AMX / Loading | Non-standard AMX native registration behavior | `FIXED` | Phase 2 |
 | **SUI-012** | Low | Repo / Build | Orphaned open.mp component prototype and unused header | `CONFIRMED` | Phase 3 |
 | **SUI-013** | High | Repo / Git | Repository dependency / nested Git metadata handling | `RESOLVED` | Pre-Release |
@@ -173,11 +173,20 @@
 - **ID:** SUI-010
 - **Severity:** Medium
 - **Area:** API / Docs
-- **Status:** CONFIRMED
-- **Current behavior:** Historical drift between `src/Natives.cpp`, `pawn/sui.inc`, and documentation led to undeclared natives and phantom declarations.
-- **Risk:** Gamemodes cannot compile or call natives without ad-hoc declarations.
-- **Evidence:** Original `pawn/sui.inc` had only 6 natives and phantom `SUI_SetDestroyOnDisconnect`.
-- **Planned phase:** Phase 0.1 (Process) / Phase 1 (Verification)
+- **Status:** FIXED — public API synchronization verified
+- **Fix Summary:**
+  - Audited and synchronized the complete public Pawn API surface across all project artifacts: `src/main.cpp` (AMX registration table), `src/Natives.hpp` / `src/Natives.cpp` (declarations, definitions, parameter checking), `pawn/sui.inc` (Pawn declarations, stocks, and tags), `docs/API_REFERENCE.md`, `docs/API_INVENTORY.md`, and `README.md`.
+  - Exactly 19 public C++ natives (18 player-specific + 1 global) and 1 stock helper (`SUI_RegisterGroup`) are registered, declared, and documented.
+  - Aligned return value contracts: documented that untagged natives return `1` on success and `0` on failure (or parameter error), and `bool:` tagged natives return `true` or `false`.
+  - Documented zero idle timeout semantics (`timeout_ms = 0` triggers immediate destruction on next server tick, does not disable idle timer).
+  - Hardened `SUI_RegisterGroup` stock helper to check `SUI_CreatePlayerFactoryGroup` return value and propagate `0` on failure instead of masking registration errors.
+  - Aligned callback contract documentation with SUI-006 decoupled execution semantics (transitions governed by `AMX_ERR_NONE`, Pawn return value is purely informational).
+  - Created automated static API contract verification suite `tests/api_contract/check_api_surface.py` covering 7 programmatic validation checks (AP1 through AP7).
+  - Fixed legacy example script `examples/factory_login_example.pwn` (migrated from open.mp to legacy SA-MP `a_samp.inc`, fixed callback declarations and fallback constants).
+  - Shortened overlength function names in `tests/player_id_validation/player_id_validation.pwn` to prevent Pawn compiler symbol truncation warnings.
+- **Verification:** Verified via automated script `tests/api_contract/check_api_surface.py` (7/7 PASS). Verified compilation of all 17 `.pwn` scripts (1 example + 16 test scripts) using Pawn compiler 3.2.3664 with 0 errors and 0 warnings.
+- **Evidence:** `pawn/sui.inc`, `src/main.cpp:14-38`, `src/Natives.cpp`, `docs/API_REFERENCE.md`, `docs/API_INVENTORY.md`, `README.md`, `examples/factory_login_example.pwn`, `tests/api_contract/check_api_surface.py`.
+- **Planned phase:** Phase 12
 
 ---
 

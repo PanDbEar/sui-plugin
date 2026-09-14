@@ -11,8 +11,16 @@
  * 4. Automatic cleanup when the player disconnects.
  */
 
-#include <open.mp>
+#include <a_samp>
 #include <sui>
+
+#if !defined INVALID_PLAYER_TEXT_DRAW
+    #define INVALID_PLAYER_TEXT_DRAW (PlayerText:0xFFFF)
+#endif
+
+#if !defined TEXT_DRAW_ALIGN_CENTER
+    #define TEXT_DRAW_ALIGN_CENTER (2)
+#endif
 
 // Static PlayerTextDraw handle storage
 static PlayerText:gLoginUI[MAX_PLAYERS] = { INVALID_PLAYER_TEXT_DRAW, ... };
@@ -22,8 +30,9 @@ static PlayerText:gLoginUI[MAX_PLAYERS] = { INVALID_PLAYER_TEXT_DRAW, ... };
  * SUI Factory Callbacks
  * 
  * NOTE: SUI requires these callbacks to be public.
- * IMPORTANT: Callbacks must return 1 on success. If a callback returns 0,
- * SUI treats the operation as failed.
+ * NOTE: In accordance with SUI-006, lifecycle state transitions depend strictly
+ * on AMX execution success (AMX_ERR_NONE), not Pawn return values. Return values
+ * are informational and do not veto or abort lifecycle transitions.
  * ----------------------------------------------------------------------------
  */
 
@@ -62,7 +71,7 @@ public ShowLoginTD(playerid)
 {
     if (gLoginUI[playerid] == INVALID_PLAYER_TEXT_DRAW)
     {
-        return 0; // Cannot show an uncreated textdraw
+        return 0; // Textdraw not yet allocated (informational return; does not veto transition)
     }
 
     PlayerTextDrawShow(playerid, gLoginUI[playerid]);

@@ -373,13 +373,14 @@ Phase 6 / 6.1 introduced generation tracking but permitted in-place replacement 
 | **3.4** | Inverted return code failure trap in `CallPawnFunction` | **MEDIUM** | Phase 7 (Resolved) |
 | **3.5** | Eager & destructive capacity eviction failure (SUI-007) | **MEDIUM** | Phase 9 (Resolved) |
 | **3.6** | Immediate auto-destroy on failed show (`hiddenSinceTick == 0`) (SUI-008) | **MEDIUM** | Phase 10 (Resolved) |
-| **3.7** | Unchecked player ID & phantom context allocation | **LOW** | Phase 1/4 (Partially Resolved) |
+| **3.7** | Unchecked player ID & phantom context allocation (SUI-009) | **LOW** | Phase 11 (Resolved) |
 | **3.8** | Orphaned open.mp component code (`Component.cpp`) | **LOW** | Future |
 | **3.9** | Unsafe Pawn parameter validation and signed/unsigned conversion (SUI-003) | **HIGH** | Phase 4 (Resolved) |
 | **3.10** | Capacity arithmetic overflow and accounting invariant safety (SUI-004) | **MEDIUM** | Phase 5 (Resolved) |
 | **3.11** | Re-entrant group replacement / generation identity confusion (SUI-017) | **HIGH** | Phase 6 (Resolved) |
 | **3.12** | SUI-017 / SUI-002 ownership immutability & safe replacement integration gate | **HIGH** | Phase 6.2 (Resolved) |
 | **3.13** | In-flight callback execution error leaves partial external UI resources in indeterminate state (SUI-018) | **MEDIUM** | Phase 8 |
+| **3.14** | Public API synchronization risk (SUI-010) | **MEDIUM** | Phase 12 (Resolved) |
 
 ---
 
@@ -396,5 +397,7 @@ Phase 6 / 6.1 introduced generation tracking but permitted in-place replacement 
 9. **Phase 8 (SUI-005)**: Hardened player teardown transactions (`CleanupPlayer` and `ResetPlayer`), failure preservation, and re-entrant mutation blocking.
 10. **Phase 9 (SUI-007)**: Implemented non-destructive capacity eviction preflight, policy-minimal ordered eviction, and candidate-by-candidate replanning.
 11. **Phase 10 (SUI-008)**: Corrected failed-show hidden lifetime timestamps, continuous hidden interval preservation, and tick-state consistency.
+12. **Phase 11 (SUI-009)**: Enforced player ID domain validation ($0 \le \text{playerId} < 1000$), eliminated phantom PlayerContext creation, and hardened native trust boundary.
+13. **Phase 12 (SUI-010)**: Synchronized public Pawn API declarations, registered C++ natives, documented contracts, stock helpers, and example compatibility.
 
 
