@@ -15,7 +15,7 @@
 | **SUI-003** | Medium | Natives / Validation | Unsafe Pawn parameter validation and signed/unsigned conversion | `FIXED — runtime input validation verified` | Phase 4 |
 | **SUI-004** | Medium | Core / Capacity | Capacity arithmetic overflow and accounting invariant safety | `FIXED — runtime regression verified` | Phase 5 |
 | **SUI-005** | High | Core / Lifecycle | Reset/Cleanup state loss when destruction fails | `CONFIRMED` | Phase 1 |
-| **SUI-006** | Medium | Core / AMX | Callback return-value / internal state divergence | `CONFIRMED` | Phase 1 |
+| **SUI-006** | Medium | Core / AMX | Callback return-value / internal state divergence | `FIXED — runtime callback semantics verified` | Phase 7 |
 | **SUI-007** | Medium | Core / Eviction | Destructive capacity eviction without pre-flight sufficiency | `CONFIRMED` | Phase 2 |
 | **SUI-008** | Medium | Core / State Machine | Failed-show hidden timestamp/state anomaly | `CONFIRMED` | Phase 1 |
 | **SUI-009** | Low | Core / Validation | Player ID validation / phantom PlayerContext creation | `PARTIALLY ADDRESSED` | Phase 1 |
@@ -27,6 +27,7 @@
 | **SUI-015** | Medium | Build / Packaging | Release packaging not yet defined | `CONFIRMED` | Pre-Release |
 | **SUI-016** | Medium | Core / Resource Lifecycle | Owner-unload external UI resource cleanup limitation | `CONFIRMED` | Phase 5 |
 | **SUI-017** | High | Core / Lifecycle / Identity | Re-entrant group replacement / generation identity confusion | `FIXED — runtime regression verified` | Phase 6 |
+| **SUI-018** | Medium | Core / Resource Lifecycle | In-flight callback execution error leaves partial external UI resources in indeterminate state | `CONFIRMED` | Phase 8 |
 
 ---
 
@@ -112,11 +113,11 @@
 - **ID:** SUI-006
 - **Severity:** Medium
 - **Area:** Core / AMX
-- **Status:** CONFIRMED
-- **Current behavior:** `CallPawnFunction` requires `retval != 0` to report success.
-- **Risk:** Standard Pawn callbacks that return `0` (or omit explicit returns) cause SUI to flag the callback as failed, aborting show/destroy/hide state transitions.
-- **Evidence:** `src/Core.cpp:965`.
-- **Planned phase:** Phase 1
+- **Status:** FIXED — runtime callback semantics verified
+- **Fix Summary:** Decoupled AMX virtual machine execution status (`amx_Exec == AMX_ERR_NONE`) from Pawn callback return cells. Implemented `PawnCallResult` evaluating `Success() = found && executed && amxError == AMX_ERR_NONE`. Pawn return values (`0`, `1`, `42`, `-1`, or omitted returns) are captured for diagnostics and ignored by lifecycle control. Missing callbacks and AMX runtime execution errors fail safely without committing state.
+- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/callback_semantics/callback_semantics.pwn` with filterscript `callback_filterscript.pwn` across scenarios P1 through P13. All 13 scenarios passed with 0 crashes, 0 memory corruption, and zero accounting drift. Verified zero regressions across SUI-001 (R1–R10), SUI-002 (A1–A7), SUI-003 (V1–V10), SUI-004 (C1–C12 + G1–G7), and SUI-017 (ID1–ID10, H1–H4, ID-EVICT, O1, O2, RAG1–RAG3) with cumulative 79/79 assertions passing.
+- **Evidence:** `src/Core.hpp:47-56, 117`, `src/Core.cpp:244, 470, 555, 645, 1225, 1335, 1372, 1588-1643`, `tests/callback_semantics/`.
+- **Planned phase:** Phase 7
 
 ---
 
@@ -260,4 +261,17 @@
 - **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/group_identity/group_identity.pwn` with filterscript `group_identity_filterscript.pwn` across scenarios ID1 through ID10, lifecycle reconciliation suite H1 through H4, extended ABA eviction scenario ID-EVICT, ownership isolation scenarios O1 and O2, and resource accounting gate scenarios RAG1 through RAG3. All 20 scenarios passed with 0 crashes, no observed memory corruption, and no accounting drift across rapid replacement cycles. Verified zero regressions across SUI-001 (R1–R10), SUI-002 (A1–A7), SUI-003 (V1–V10), and SUI-004 (C1–C12 + G1–G7) with cumulative 66/66 assertions passing.
 - **Evidence:** `src/Core.hpp:17, 55, 60, 66`, `src/Core.cpp:12-25, 139-160, 185-280, 295-365, 370-560, 580-660, 700-800, 1170-1230, 1260-1380`, `tests/group_identity/`, `tests/amx_ownership/`.
 - **Planned phase:** Phase 6 / Phase 6.2 (Hardened)
+
+---
+
+### SUI-018: In-flight callback execution error leaves partial external UI resources in indeterminate state
+- **ID:** SUI-018
+- **Severity:** Medium
+- **Area:** Core / Resource Lifecycle
+- **Status:** CONFIRMED
+- **Current behavior:** If a user-defined factory callback (`cbCreate`, `cbShow`, `cbHide`, `cbDestroy`) partially creates, shows, or modifies host SA-MP resources (e.g., calling `CreatePlayerTextDraw`) and subsequently triggers an AMX runtime error (e.g. division by zero, invalid array index) before completion, `amx_Exec` returns an error code. SUI safely aborts internal state transitions (refusing to mark the group created or debit capacity). However, because SUI virtualizes groups and does not own raw host `PlayerTextDraw` handles, it cannot automatically roll back or destroy partially allocated host resources.
+- **Risk:** Server hosts with buggy callback logic may leak unmanaged SA-MP textdraw slots in the host server, which SUI cannot track or clean up upon disconnect/unload.
+- **Distinction from SUI-016:** SUI-016 addresses script unloading (`AmxUnload`) without destroying created textdraw handles. SUI-018 addresses mid-callback AMX runtime errors causing partial external allocation before state commit.
+- **Planned phase:** Phase 8
+
 

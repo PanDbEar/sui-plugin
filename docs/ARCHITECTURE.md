@@ -134,3 +134,38 @@ RegisterFactoryGroup(playerId, group, amx, callbacks...):
 1. **No In-Place Callback Re-Registration**: Re-registering the same group name while `isExecutingCallback == true` is rejected (`return false`). This prevents phantom capacity subtractions (`SubtractActiveTextDrawCount` without actual destruction) and prevents resetting active transaction state in-flight.
 2. **Atomic ID Allocation**: `TryAllocateGroupInstanceId` is invoked before modifying any map or container state. If monotonic 64-bit counter exhaustion occurs (`nextGroupInstanceId == 0`), the function returns `false` without partial mutation.
 3. **Legitimate ABA Replacement**: To replace a group under the same name, the script must genuinely remove the old group first (e.g. calling `SUI_ResetPlayer` or `SUI_DestroyGroup`). The subsequent registration creates a new generation with a fresh `instanceId`. Stale outer transactions detect the mismatch and abort cleanly.
+
+---
+
+## 5. Callback Execution Model & Lifecycle Semantics (SUI-006)
+
+### 5.1. Decoupling AMX Execution from Pawn Return Value
+In historical revisions, `CallPawnFunction` evaluated success as `execResult == AMX_ERR_NONE && retval != 0`. This conflated the AMX virtual machine execution status with the cell returned by the Pawn script. If a script omitted a return statement (defaulting to `0`) or explicitly returned `0`, SUI treated the callback as failed and aborted the lifecycle transition.
+
+Under SUI-006, callback success is governed by the `PawnCallResult` model:
+```cpp
+struct PawnCallResult {
+    bool found = false;
+    bool executed = false;
+    int amxError = AMX_ERR_NONE;
+    cell retval = 0;
+
+    bool Success() const {
+        return found && executed && amxError == AMX_ERR_NONE;
+    }
+};
+```
+
+### 5.2. Callback Contract
+1. **Pawn Return Values Are Informational**: Return values (`0`, `1`, `42`, `-1`, etc.) are captured for diagnostic logging but do **NOT** determine whether SUI lifecycle transitions succeed. Callbacks are not veto hooks.
+2. **Missing Callbacks Fail Safely**: If a callback is not defined in the owning AMX, `found` is `false`, `Success()` returns `false`, and the transition safely aborts without committing state.
+3. **AMX Execution Errors Abort State Commits**: If `amx_Exec` returns an error (e.g. `AMX_ERR_ZERODIV`), `Success()` returns `false`, preventing SUI from committing the state transition.
+4. **Conservative State Policies on Execution Failure**:
+   - **Create**: Does not mark created; does not add capacity.
+   - **Show**: Does not mark visible.
+   - **Hide**: Preserves existing visible state.
+   - **Destroy**: Preserves created state and capacity.
+
+### 5.3. External Resource Transactional Limitation (SUI-018)
+While SUI guarantees that its internal state machine remains consistent and aborts state transitions upon AMX execution errors, SUI does not track or manage underlying raw SA-MP textdraw IDs. If a callback partially allocates textdraws before encountering an execution error, SUI cannot automatically roll back those external host resources.
+

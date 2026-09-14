@@ -47,6 +47,17 @@ struct PlayerContext {
     std::unordered_map<std::string, SUIGroup> groups;
 };
 
+struct PawnCallResult {
+    bool found = false;
+    bool executed = false;
+    int amxError = AMX_ERR_NONE;
+    cell retval = 0;
+
+    bool Success() const {
+        return found && executed && amxError == AMX_ERR_NONE;
+    }
+};
+
 class SUICore {
 public:
     static std::unordered_map<int, PlayerContext> players;
@@ -103,5 +114,5 @@ public:
 
     static bool TouchGroup(int playerId, const std::string& groupName);
 
-    static bool CallPawnFunction(AMX* ownerAmx, int playerId, const std::string& functionName);
+    static PawnCallResult CallPawnFunction(AMX* ownerAmx, int playerId, const std::string& functionName);
 };

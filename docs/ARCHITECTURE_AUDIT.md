@@ -157,25 +157,30 @@ for (AMX* amx : activeAmxInstances)
 
 ---
 
-### 3.4. MEDIUM: Return Value Trap in Callback Execution
+### 3.4. MEDIUM: Return Value Trap in Callback Execution (SUI-006 — Resolved)
 
-**Location:** `src/Core.cpp:965` (`SUICore::CallPawnFunction`).
+**Location:** `src/Core.cpp:1588-1643`, `src/Core.hpp:47-56, 117`.
 
 #### Mechanism
+Historical implementation evaluated:
 ```cpp
 return execResult == AMX_ERR_NONE && retval != 0;
 ```
 
 #### Impact
 - In Pawn programming conventions, many callbacks default to returning `0` or omit explicit return values (evaluating to 0).
-- If a Pawn callback returns `0`, `CallPawnFunction` returns `false`.
-- This causes SUI to treat valid executions as failures:
-  - In `ShowGroup`: `group.isCreated` is not set to `true`, and active count is not updated.
-  - In `EvictOneHiddenGroup`: Eviction aborts, which causes `EnsureCapacity` to fail, blocking group display.
-  - In `DestroyGroupInternal`: Destruction aborts, leaving the group stuck.
+- If a Pawn callback returns `0`, `CallPawnFunction` returned `false`.
+- This caused SUI to treat valid executions as failures:
+  - In `ShowGroup`: `group.isCreated` was not set to `true`, and active count was not updated.
+  - In `EvictOneHiddenGroup`: Eviction aborted, which caused `EnsureCapacity` to fail, blocking group display.
+  - In `DestroyGroupInternal`: Destruction aborted, leaving the group stuck.
 
-#### Recommended Phase 1 Remediation
-- Decouple execution success (`execResult == AMX_ERR_NONE`) from user callback return logic, or explicitly specify return code semantics in documentation.
+#### Phase 7 Remediation (Resolved)
+- Decoupled AMX virtual machine execution status (`amx_Exec == AMX_ERR_NONE`) from Pawn callback return cells.
+- Implemented `struct PawnCallResult` evaluating `Success() = found && executed && amxError == AMX_ERR_NONE`.
+- Pawn return cells (`0`, `1`, `42`, `-1`, or omitted returns) are recorded for diagnostic logging and ignored by lifecycle state control.
+- Missing callbacks and AMX runtime execution errors fail safely without committing state.
+- Verified across 13 live server test scenarios (P1–P13) with zero regressions across prior suites (79/79 cumulative assertions passing).
 
 ---
 
@@ -345,7 +350,7 @@ Phase 6 / 6.1 introduced generation tracking but permitted in-place replacement 
 | **3.1** | Container invalidation / iterator crash during Pawn callbacks | **CRITICAL** | Phase 1 (Resolved) |
 | **3.2** | Non-standard native registration (`amx_Redirect`) | **HIGH** | Phase 2 (Resolved) |
 | **3.3** | AMX script ownership & multi-script collision | **HIGH** | Phase 3 (Resolved) |
-| **3.4** | Inverted return code failure trap in `CallPawnFunction` | **MEDIUM** | Phase 7 |
+| **3.4** | Inverted return code failure trap in `CallPawnFunction` | **MEDIUM** | Phase 7 (Resolved) |
 | **3.5** | Eager & destructive capacity eviction failure | **MEDIUM** | Phase 8 |
 | **3.6** | Immediate auto-destroy on failed show (`hiddenSinceTick == 0`) | **MEDIUM** | Phase 8 |
 | **3.7** | Unchecked player ID & phantom context allocation | **LOW** | Phase 1/4 (Partially Resolved) |
@@ -354,6 +359,7 @@ Phase 6 / 6.1 introduced generation tracking but permitted in-place replacement 
 | **3.10** | Capacity arithmetic overflow and accounting invariant safety (SUI-004) | **MEDIUM** | Phase 5 (Resolved) |
 | **3.11** | Re-entrant group replacement / generation identity confusion (SUI-017) | **HIGH** | Phase 6 (Resolved) |
 | **3.12** | SUI-017 / SUI-002 ownership immutability & safe replacement integration gate | **HIGH** | Phase 6.2 (Resolved) |
+| **3.13** | In-flight callback execution error leaves partial external UI resources in indeterminate state (SUI-018) | **MEDIUM** | Phase 8 |
 
 ---
 
@@ -366,6 +372,7 @@ Phase 6 / 6.1 introduced generation tracking but permitted in-place replacement 
 5. **Phase 5 (SUI-004)**: Hardened capacity arithmetic, overflow prevention, and accounting invariants.
 6. **Phase 6 (SUI-017)**: Implemented monotonic group instance generations, ABA identity resolution, and lifecycle transaction safety.
 7. **Phase 6.2 (Gate)**: Reconciled SUI-017 generation identity with SUI-002 ownership immutability and genuine removal semantics.
-8. **Phase 7 (SUI-006)**: Decouple callback return semantics from state transition success.
+8. **Phase 7 (SUI-006)**: Decoupled callback return semantics from state transition success.
+9. **Phase 8 (SUI-007 / SUI-008 / SUI-018)**: Eviction policy pre-flight sufficiency, state machine edge cases, and external UI transactional handling.
 
 

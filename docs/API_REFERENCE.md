@@ -39,8 +39,10 @@ Registers a UI group for a player with four lifecycle callbacks.
 - **`cbHide[]`**: Public function `cbHide(playerid)` called to hide textdraws.
 - **Returns**: `1` on success, `0` on error.
 
-> [!IMPORTANT]
-> All callbacks must be declared `public` and must return `1` on success.
+> [!NOTE]
+> All lifecycle callbacks must be declared `public`. The callback's Pawn return value is ignored by SUI.
+> Lifecycle success is determined solely by whether the callback can be located in the owning AMX and executes without AMX runtime errors.
+> Callbacks are not veto hooks; returning `0` will not abort or cancel a lifecycle transition.
 
 ---
 

@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **SUI-006**: Decoupled Pawn callback return values from SUI lifecycle state transitions and established robust callback execution semantics. Status: `FIXED — runtime callback semantics verified`.
+  - Introduced `struct PawnCallResult` with explicit execution fields (`found`, `executed`, `amxError`, `retval`, `Success()`), separating execution validity (`amx_Exec == AMX_ERR_NONE`) from application-level return values.
+  - Decoupled lifecycle transitions from callback return values across all 7 callback invocation points in `ShowGroup` (create & show boundaries), `HideGroup`, `DestroyGroupInternal` (hide & destroy boundaries), `EvictOneHiddenGroup`, and `ProcessTick`. Return values `0`, `1`, `42`, `-1`, or omitted `0` are treated as informational and do not abort state transitions.
+  - Enforced safe, conservative state policies for missing callbacks (e.g. empty string or unexported public function) and AMX runtime execution errors:
+    - Creation failure (missing callback or runtime error) prevents group creation without reserving capacity.
+    - Show failure (missing callback or runtime error) preserves hidden state (`isVisible = false`).
+    - Hide failure (missing callback or runtime error) preserves visible state (`isVisible = true`).
+    - Destroy failure (missing callback or runtime error) aborts destruction and preserves capacity reservation.
+  - Maintained complete isolation between callback execution status and SUI-002 owner AMX enforcement and SUI-017 generation tracking.
+  - Preserved public Pawn API signatures in `pawn/sui.inc` without breaking changes.
+  - Cataloged transactional external-resource limitation as new issue `SUI-018: In-flight callback execution error leaves partial external UI resources in indeterminate state`.
 - **SUI-017 / SUI-002 (Integration Gate Phase 6.2)**: Preserved AMX ownership immutability across lifecycle generation changes and reconciled same-name group replacement semantics. Status: `FIXED — runtime regression verified`.
   - Established architectural separation: *instance identity protects lifecycle generations*, while *owner AMX protects script isolation*. Generation change does NOT authorize owner transfer.
   - In `SUICore::RegisterFactoryGroup`, strictly rejected re-registration during active callback execution (`isExecutingCallback == true`) for both same-owner and cross-owner callers (`return false`), eliminating mid-callback state corruption, callback-window takeover, and phantom capacity decrements.
@@ -51,6 +62,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **SUI-009 (Partially Addressed)**: Replaced mutating `players[playerId]` `std::unordered_map::operator[]` lookups in group setters (`SetGroupSize`, `SetGroupPriority`, `SetGroupEvictable`, `SetIdleTimeout`) with defensive non-inserting `GetPlayerContext()` lookups to prevent phantom `PlayerContext` creation.
 
 ### Added
+- Created `tests/callback_semantics/TEST_PLAN.md` documenting Pawn callback return semantics, execution status, and lifecycle consistency test scenarios P1 through P13.
+- Created `tests/callback_semantics/callback_semantics.pwn` and `tests/callback_semantics/callback_filterscript.pwn` verifying informational return values (0, 1, 42, -1, omitted), safe handling of missing callbacks, AMX runtime execution error containment (division by zero), ABA generation safety, and cross-AMX isolation under return value 0.
 - Created `tests/group_identity/TEST_PLAN.md` documenting group identity, lifecycle reconciliation (H1–H4), and extended ABA re-entrancy test scenarios (ID1–ID10, ID-EVICT, ID-CROSS-AMX).
 - Created `tests/group_identity/group_identity.pwn` and `tests/group_identity/group_identity_filterscript.pwn` verifying ABA re-entrant replacement during callbacks (`cbCreate`, `cbShow`, `cbHide`, `cbDestroy`), transaction abort on replacement, tick processing identity safety, multi-AMX generation isolation, 100-cycle replacement stability, hide capacity preservation, visible/hidden destroy accounting order, in-place eviction replacement, and clean callback guard ownership.
 - Created `tests/capacity_arithmetic/TEST_PLAN.md` documenting capacity arithmetic test scenarios C1 through C12.
@@ -63,6 +76,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Created `tests/reentrancy_regression.pwn` providing regression test coverage for re-entrant lifecycle operations across Pawn callbacks (compiled and verified with Pawn compiler 3.2.3664).
 
 ### Documentation
+- Updated `docs/API_REFERENCE.md`, `docs/ARCHITECTURE.md`, `docs/KNOWN_ISSUES.md`, and `docs/ARCHITECTURE_AUDIT.md` reflecting decoupled callback return semantics, `PawnCallResult` model, conservative failure policies, and cataloged SUI-018.
 - Created authoritative engineering issue tracker `docs/KNOWN_ISSUES.md` cataloging issues SUI-001 through SUI-015.
 - Created `docs/API_INVENTORY.md` synchronizing all C++ natives, parameters, helpers, and constants.
 - Created `docs/ARCHITECTURE_AUDIT.md` providing an in-depth technical analysis of concurrency, AMX routing, and lifecycle risks.

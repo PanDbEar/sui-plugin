@@ -241,7 +241,7 @@ void SUICore::ProcessTick(uint64_t currentTick)
 
             // Pawn callbacks may call back into SUI and mutate players/groups.
             // Never retain container references or iterators across this boundary.
-            bool destroySuccess = CallPawnFunction(ownerAmx, playerId, cbDestroy);
+            bool destroySuccess = CallPawnFunction(ownerAmx, playerId, cbDestroy).Success();
 
             // Re-acquire player and group state using stable identifiers
             auto* postCtx = GetPlayerContext(playerId);
@@ -467,7 +467,7 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
 
         // Pawn callbacks may call back into SUI and mutate players/groups.
         // Never retain container references across this boundary.
-        bool createSuccess = CallPawnFunction(ownerAmx, playerId, cbCreate);
+        bool createSuccess = CallPawnFunction(ownerAmx, playerId, cbCreate).Success();
 
         // Re-acquire player and group state after create callback
         auto* postCtx = GetPlayerContext(playerId);
@@ -552,7 +552,7 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
             cbShow.c_str()
         );
 
-        bool showSuccess = CallPawnFunction(ownerAmx, playerId, cbShow);
+        bool showSuccess = CallPawnFunction(ownerAmx, playerId, cbShow).Success();
 
         // Re-acquire after show callback
         auto* postGroup = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
@@ -642,7 +642,7 @@ void SUICore::HideGroup(int playerId, const std::string& groupName)
 
         // Pawn callbacks may call back into SUI and mutate players/groups.
         // Never retain container references across this boundary.
-        bool hideSuccess = CallPawnFunction(ownerAmx, playerId, cbHide);
+        bool hideSuccess = CallPawnFunction(ownerAmx, playerId, cbHide).Success();
 
         // Re-acquire player and group state after hide callback
         auto* postGroup = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
@@ -1222,7 +1222,7 @@ bool SUICore::EvictOneHiddenGroup(PlayerContext& ctx)
 
     // Pawn callbacks may call back into SUI and mutate players/groups.
     // Never retain container references or pointers across this boundary.
-    bool destroyed = CallPawnFunction(ownerAmx, playerId, cbDestroy);
+    bool destroyed = CallPawnFunction(ownerAmx, playerId, cbDestroy).Success();
 
     // Re-acquire player and candidate group after callback
     auto* postCtx = GetPlayerContext(playerId);
@@ -1332,7 +1332,7 @@ bool SUICore::DestroyGroupInternal(PlayerContext& ctx, SUIGroup& group, const st
 
         // Pawn callbacks may call back into SUI and mutate players/groups.
         // Never retain container references across this boundary.
-        bool hideSuccess = CallPawnFunction(ownerAmx, playerId, cbHide);
+        bool hideSuccess = CallPawnFunction(ownerAmx, playerId, cbHide).Success();
 
         // Re-acquire after hide callback
         auto* postGroup = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
@@ -1369,7 +1369,7 @@ bool SUICore::DestroyGroupInternal(PlayerContext& ctx, SUIGroup& group, const st
 
     // Pawn callbacks may call back into SUI and mutate players/groups.
     // Never retain container references across this boundary.
-    bool destroySuccess = CallPawnFunction(ownerAmx, playerId, cbDestroy);
+    bool destroySuccess = CallPawnFunction(ownerAmx, playerId, cbDestroy).Success();
 
     // Re-acquire player and group state after destroy callback
     auto* postCtx = GetPlayerContext(playerId);
@@ -1585,25 +1585,27 @@ bool SUICore::TouchGroup(int playerId, const std::string& groupName)
     return true;
 }
 
-bool SUICore::CallPawnFunction(AMX* ownerAmx, int playerId, const std::string& functionName)
+PawnCallResult SUICore::CallPawnFunction(AMX* ownerAmx, int playerId, const std::string& functionName)
 {
+    PawnCallResult result;
+
     if (!ownerAmx)
     {
         Debug("CallPawnFunction failed: null ownerAmx playerid=%d function=%s", playerId, functionName.c_str());
-        return false;
+        return result;
     }
 
     if (!IsAmxActive(ownerAmx))
     {
         Debug("CallPawnFunction failed: ownerAmx %p is not active playerid=%d function=%s",
             ownerAmx, playerId, functionName.c_str());
-        return false;
+        return result;
     }
 
     if (functionName.empty())
     {
         Debug("CallPawnFunction failed: empty function name playerid=%d", playerId);
-        return false;
+        return result;
     }
 
     Debug("CallPawnFunction searching public=%s playerid=%d ownerAmx=%p",
@@ -1615,29 +1617,42 @@ bool SUICore::CallPawnFunction(AMX* ownerAmx, int playerId, const std::string& f
     int index = -1;
     int findResult = amx_FindPublic(ownerAmx, functionName.c_str(), &index);
 
-    Debug("amx_FindPublic public=%s result=%d index=%d",
-        functionName.c_str(),
-        findResult,
-        index
-    );
-
-    if (findResult == AMX_ERR_NONE)
+    if (findResult != AMX_ERR_NONE)
     {
-        cell retval = 0;
+        result.found = false;
+        result.amxError = findResult;
+        Debug("CallPawnFunction failed: public callback not found in owner AMX: %s (err=%d)",
+            functionName.c_str(), findResult);
+        return result;
+    }
 
-        amx_Push(ownerAmx, static_cast<cell>(playerId));
+    result.found = true;
+    amx_Push(ownerAmx, static_cast<cell>(playerId));
 
-        int execResult = amx_Exec(ownerAmx, &retval, index);
+    cell retval = 0;
+    int execResult = amx_Exec(ownerAmx, &retval, index);
 
-        Debug("amx_Exec public=%s execResult=%d retval=%d",
+    result.executed = true;
+    result.amxError = execResult;
+    result.retval = retval;
+
+    if (execResult == AMX_ERR_NONE)
+    {
+        Debug("CallPawnFunction success: public=%s playerid=%d retval=%d",
             functionName.c_str(),
+            playerId,
+            static_cast<int>(retval)
+        );
+    }
+    else
+    {
+        Debug("CallPawnFunction failed: amx_Exec error public=%s playerid=%d err=%d retval=%d",
+            functionName.c_str(),
+            playerId,
             execResult,
             static_cast<int>(retval)
         );
-
-        return execResult == AMX_ERR_NONE && retval != 0;
     }
 
-    Debug("Public callback not found in owner AMX: %s", functionName.c_str());
-    return false;
+    return result;
 }
