@@ -152,8 +152,7 @@ cell AMX_NATIVE_CALL Natives::SUI_SetMaxTextDraws(AMX* amx, cell* params)
         return 0;
     }
 
-    SUICore::SetMaxTextDraws(playerId, maxCount);
-    return 1;
+    return SUICore::SetMaxTextDraws(playerId, maxCount) ? 1 : 0;
 }
 
 cell AMX_NATIVE_CALL Natives::SUI_SetEvictionThreshold(AMX* amx, cell* params)
@@ -168,8 +167,7 @@ cell AMX_NATIVE_CALL Natives::SUI_SetEvictionThreshold(AMX* amx, cell* params)
         return 0;
     }
 
-    SUICore::SetEvictionThreshold(playerId, threshold);
-    return 1;
+    return SUICore::SetEvictionThreshold(playerId, threshold) ? 1 : 0;
 }
 
 cell AMX_NATIVE_CALL Natives::SUI_SetGroupPriority(AMX* amx, cell* params)

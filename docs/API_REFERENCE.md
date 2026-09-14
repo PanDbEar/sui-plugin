@@ -120,10 +120,10 @@ Configures the estimated size before group creation. It cannot modify the size o
 ```pawn
 native SUI_SetMaxTextDraws(playerid, max_count);
 ```
-Sets the upper bound of PlayerTextDraws tracked for a player.
-- **`max_count`**: Must be a non-negative integer (`>= 0`). Negative values are rejected and return `0`. A value of `0` defaults to `256`.
+Sets the hard upper bound of PlayerTextDraws tracked for a player.
+- **`max_count`**: Must be a non-negative integer (`>= 0`). Negative values are rejected and return `0`. A value of `0` defaults to `256`. Cannot be lowered below the player's current `activeTextDrawCount` or below the current `evictionThreshold`.
 - **Default**: `256`.
-- **Returns**: `1` on success, `0` on validation error.
+- **Returns**: `1` on success, `0` on validation error, if `max_count < activeTextDrawCount`, or if `max_count < evictionThreshold`.
 
 ---
 
@@ -131,10 +131,10 @@ Sets the upper bound of PlayerTextDraws tracked for a player.
 ```pawn
 native SUI_SetEvictionThreshold(playerid, threshold);
 ```
-Sets the threshold count of active textdraws above which SUI begins evicting hidden groups.
-- **`threshold`**: Must be a non-negative integer (`>= 0`). Negative values are rejected and return `0`. A value of `0` defaults to `230`.
+Sets the soft threshold count of active textdraws above which SUI begins evicting hidden groups.
+- **`threshold`**: Must be a non-negative integer (`>= 0`). Negative values are rejected and return `0`. A value of `0` defaults to `230`. Cannot exceed the player's configured `maxTextDraws`.
 - **Default**: `230`.
-- **Returns**: `1` on success, `0` on validation error.
+- **Returns**: `1` on success, `0` on validation error or if `threshold > maxTextDraws`.
 
 ---
 

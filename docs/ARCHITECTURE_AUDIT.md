@@ -283,19 +283,21 @@ Furthermore, string parameters were retrieved via an unchecked `GetStringParam` 
 
 ### 3.10. MEDIUM: Capacity Arithmetic Overflow & Accounting Invariant Safety (SUI-004)
 
-**Location:** `src/Core.cpp:320-395, 705-757, 908-918`, `src/Core.hpp:78-83`.
+**Location:** `src/Core.cpp:320-410, 765-855, 940-975`, `src/Core.hpp:78-87`.
 
 #### Mechanism & Reachability
-1. **Unsigned 32-bit Addition Overflow**: `EnsureCapacity` evaluated `currentCtx->activeTextDrawCount + requiredSize <= currentCtx->evictionThreshold`. If `activeTextDrawCount + requiredSize >= 2^32`, unsigned addition wrapped modulo $2^{32}$ back around zero, falsely evaluating as smaller than `evictionThreshold` and approving excessive resource allocation.
-2. **TOCTOU Size Mutation During Callback**: In `ShowGroup`, `EnsureCapacity` approved admission using `group.estimatedSize` before invoking `cbCreate`. If `cbCreate` called `SUI_SetGroupSize` to increase the size (e.g. to `2147483647`), post-callback accounting added the newly mutated size to `activeTextDrawCount`, completely bypassing `EnsureCapacity`.
-3. **Post-Creation Size Modification Drift**: Modifying `SUI_SetGroupSize` on an already-created group altered `group.estimatedSize` without updating `activeTextDrawCount`. When the group was later destroyed, `SubtractActiveTextDrawCount` subtracted the mismatched new size, causing permanent accounting drift (either leaking phantom textdraw counts or underflow-clamping other groups' active counts to zero).
+1. **Unsigned 32-bit Addition Overflow**: `EnsureCapacity` evaluated `currentCtx->activeTextDrawCount + requiredSize <= currentCtx->evictionThreshold`. While single-call Pawn cell input cannot exceed `2147483647` after SUI-003, multiple group allocations accumulating $\ge 2^{32}$ caused unsigned addition to wrap modulo $2^{32}$ back around zero, falsely evaluating as smaller than `evictionThreshold` and approving excessive resource allocation.
+2. **TOCTOU Size Mutation During Callback**: In `ShowGroup`, `EnsureCapacity` approved admission using `group.estimatedSize` before invoking `cbCreate`. If `cbCreate` called `SUI_SetGroupSize` to increase the size, post-callback accounting previously added the newly mutated size to `activeTextDrawCount`, completely bypassing `EnsureCapacity`.
+3. **Post-Creation Size Modification Drift**: Modifying `SUI_SetGroupSize` on an already-created group altered `group.estimatedSize` without updating `activeTextDrawCount`. When the group was later destroyed, `SubtractActiveTextDrawCount` subtracted the mismatched new size, causing permanent accounting drift.
+4. **Hard Maximum Ceiling vs Diagnostic Only**: Previous revisions diagnosed `sum > maxTextDraws` without failing the addition, committing active counts above `maxTextDraws`.
 
-#### Phase 5 Remediation (Resolved)
-- Hardened `EnsureCapacity` using widened 64-bit space (`uint64_t total = (uint64_t)active + (uint64_t)required <= (uint64_t)threshold`).
-- Implemented `SUICore::TryAddActiveTextDrawCount` with 64-bit overflow prevention and diagnostic invariant checks.
-- Hardened `SUICore::SubtractActiveTextDrawCount` with underflow detection, diagnostic logging, and safe zero-clamping.
+#### Phase 5 & 5.1 Remediation (Resolved)
+- Hardened `EnsureCapacity` using widened 64-bit space (`uint64_t total = (uint64_t)active + (uint64_t)required <= (uint64_t)threshold && total <= (uint64_t)max`).
+- Enforced `maxTextDraws` as a strict hard capacity ceiling in `SUICore::TryAddActiveTextDrawCount`, returning `false` without mutating accounting if `sum > maxTextDraws`.
+- Enforced configuration invariant `evictionThreshold <= maxTextDraws` in `SetEvictionThreshold` and `SetMaxTextDraws`, rejecting invalid transitions (`return false`).
+- Hardened `SUICore::SubtractActiveTextDrawCount` with state reconciliation via `SUICore::RecalculateActiveTextDrawCount` across tracked created groups on underflow invariant violation.
 - Implemented size locking in `SUICore::SetGroupSize`: rejects mutations while a group is currently created (`isCreated == true`) or executing a lifecycle callback (`isExecutingCallback == true`).
-- In `ShowGroup`, snapshotted `authorizedSize` prior to `EnsureCapacity` and bound `postGroup.estimatedSize` to `authorizedSize` on creation success, guaranteeing that capacity reservation matches exact accounting addition.
+- In `ShowGroup`, snapshotted `authorizedSize` prior to `EnsureCapacity`, bound `postGroup.estimatedSize` to `authorizedSize` on creation success, and added callback re-entrancy created-guard, guaranteeing that capacity reservation matches exact accounting addition.
 
 ---
 

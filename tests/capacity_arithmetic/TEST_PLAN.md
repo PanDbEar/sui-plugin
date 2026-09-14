@@ -107,3 +107,49 @@ This document defines the regression test suite for **SUI-004** (Overflow-Safe C
 - **Actions**: Attempt to show group with size `2147483647`.
 - **Expected**: Show fails (100 + 2147483647 = 2147483747 > 230). Active remains 100.
 - **Cleanup**: Destroy `c12_base` -> active returns to `0`.
+
+---
+
+## 3. Phase 5.1 Accounting Gate Specifications (G1–G7)
+
+### Test G1: Standard Bounds Validation
+- **Actions**: Call `SUI_SetMaxTextDraws(0, 256)` and `SUI_SetEvictionThreshold(0, 230)`.
+- **Expected**: Both calls return `1`, validating standard defaults (`230 <= 256`).
+
+### Test G2: Threshold > Max Rejection
+- **Setup**: `maxTextDraws = 256`, `evictionThreshold = 230`.
+- **Actions**: Attempt `SUI_SetEvictionThreshold(0, 257)`.
+- **Expected**: Rejection (`return 0`). `evictionThreshold` remains unchanged at `230`.
+
+### Test G3: Lowering Max Below Threshold Rejection
+- **Setup**: `maxTextDraws = 256`, `evictionThreshold = 230`.
+- **Actions**: Attempt `SUI_SetMaxTextDraws(0, 100)` without lowering threshold first.
+- **Expected**: Rejection (`return 0`). `maxTextDraws` remains unchanged at `256`.
+
+### Test G4: Threshold Boundary Admission Check
+- **Setup**: `maxTextDraws = 100`, `evictionThreshold = 90`. Show non-evictable group of size 80 -> active = 80.
+- **Actions**: Attempt to show candidate group of size 15 (projected 95 > threshold 90, but < max 100).
+- **Expected**: Eviction cannot free space -> `ShowGroup` fails, candidate is not created, active remains 80.
+- **Cleanup**: Destroy base group.
+
+### Test G5: Hard Max Ceiling Enforcement
+- **Setup**: `maxTextDraws = 100`, `evictionThreshold = 95`. Show non-evictable group of size 95 -> active = 95.
+- **Actions**: Attempt to show group of size 10 (projected 105 > maxTextDraws 100).
+- **Expected**: Hard ceiling check prevents admission. `ShowGroup` fails, candidate not created, active never exceeds 95.
+- **Cleanup**: Destroy base group.
+
+### Test G6: Lowering Max Below Active Count Rejection
+- **Setup**: `maxTextDraws = 256`, `evictionThreshold = 230`. Show group of size 50 -> active = 50.
+- **Actions**: Lower threshold to 30, then attempt `SUI_SetMaxTextDraws(0, 40)`.
+- **Expected**: Rejection (`return 0`) because `requested max (40) < active count (50)`. `maxTextDraws` remains unchanged, active count preserved at 50.
+- **Cleanup**: Destroy group, reset player.
+
+### Test G7: Invariant I1 Conservation Verification
+- **Setup**: Clean player.
+- **Actions**:
+  - Show group 1 (size 12) + group 2 (size 18) -> active = 30.
+  - Hide group 1 -> active remains 30 (hidden created groups retain allocated capacity).
+  - Destroy group 2 -> active decreases to 12.
+  - Reset player -> active decreases to 0.
+- **Expected**: Exact conservation `activeTextDrawCount == \sum g.estimatedSize` across all lifecycle states.
+

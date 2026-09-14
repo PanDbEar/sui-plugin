@@ -61,15 +61,15 @@ SUI invokes user gamemode callbacks via AMX public function resolution (`amx_Fin
 
 The following internal default values are compiled into `src/Core.hpp` and `pawn/sui.inc`:
 
-| Configuration Attribute | Default Value | Source Location | Pawn Configurable Via |
+| Configuration Attribute | Default Value | Struct / Source Location | Pawn Configurable Via |
 | :--- | :--- | :--- | :--- |
-| `idleTimeoutMs` | `30000` (30 seconds) | `src/Core.hpp:27` | `SUI_SetIdleTimeout`, `SUI_RegisterGroup` |
-| `estimatedSize` | `1` PlayerTextDraw | `src/Core.hpp:29` | `SUI_SetGroupSize`, `SUI_RegisterGroup` |
-| `priority` | `1` (`SUI_PRIORITY_NORMAL`) | `src/Core.hpp:30` | `SUI_SetGroupPriority`, `SUI_RegisterGroup` |
-| `evictable` | `true` | `src/Core.hpp:31` | `SUI_SetGroupEvictable`, `SUI_RegisterGroup` |
-| `maxTextDraws` | `256` PlayerTextDraws | `src/Core.hpp:39` | `SUI_SetMaxTextDraws` |
-| `evictionThreshold` | `230` PlayerTextDraws | `src/Core.hpp:40` | `SUI_SetEvictionThreshold` |
-| `debugEnabled` | `false` | `src/Core.hpp:49` | `SUI_SetDebug` |
+| `idleTimeoutMs` | `30000` (30 seconds) | `SUIGroup` (`src/Core.hpp:27`) | `SUI_SetIdleTimeout`, `SUI_RegisterGroup` |
+| `estimatedSize` | `1` PlayerTextDraw | `SUIGroup` (`src/Core.hpp:29`) | `SUI_SetGroupSize`, `SUI_RegisterGroup` |
+| `priority` | `1` (`SUI_PRIORITY_NORMAL`) | `SUIGroup` (`src/Core.hpp:30`) | `SUI_SetGroupPriority`, `SUI_RegisterGroup` |
+| `evictable` | `true` | `SUIGroup` (`src/Core.hpp:31`) | `SUI_SetGroupEvictable`, `SUI_RegisterGroup` |
+| `maxTextDraws` | `256` PlayerTextDraws | `PlayerContext` (`src/Core.hpp:43`) | `SUI_SetMaxTextDraws` |
+| `evictionThreshold` | `230` PlayerTextDraws | `PlayerContext` (`src/Core.hpp:44`) | `SUI_SetEvictionThreshold` |
+| `debugEnabled` | `false` | `SUICore` (`src/Core.hpp:53`) | `SUI_SetDebug` |
 
 ---
 

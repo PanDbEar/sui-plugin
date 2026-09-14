@@ -8,12 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - **SUI-004**: Hardened capacity accounting and arithmetic invariants against overflow, underflow, and callback size mutation. Status: `FIXED — runtime regression verified`.
-  - Converted capacity evaluation in `EnsureCapacity` to 64-bit widened space (`(uint64_t)active + (uint64_t)required <= (uint64_t)threshold`), eliminating unsigned 32-bit addition wrap-around to zero.
-  - Implemented `SUICore::TryAddActiveTextDrawCount` guarding against 32-bit addition overflow and logging diagnostic invariant warnings when active textdraw count exceeds `maxTextDraws`.
-  - Hardened `SUICore::SubtractActiveTextDrawCount` with underflow detection, diagnostic logging, and safe zero-clamping.
+  - Converted capacity evaluation in `EnsureCapacity` to 64-bit widened space (`(uint64_t)active + (uint64_t)required <= (uint64_t)threshold && total <= (uint64_t)max`), eliminating unsigned 32-bit addition wrap-around to zero.
+  - Enforced `maxTextDraws` as a strict hard capacity ceiling in `SUICore::TryAddActiveTextDrawCount` and `EnsureCapacity`, failing addition and rejecting group creation without mutating accounting if projected count exceeds `maxTextDraws`.
+  - Enforced configuration invariant `evictionThreshold <= maxTextDraws`: `SetEvictionThreshold` rejects `threshold > maxTextDraws`; `SetMaxTextDraws` rejects lowering `maxCount < evictionThreshold` or `maxCount < activeTextDrawCount`.
+  - Hardened `SUICore::SubtractActiveTextDrawCount` with state reconciliation via `SUICore::RecalculateActiveTextDrawCount` across tracked created groups on underflow invariant violation.
   - Implemented state-locking in `SUICore::SetGroupSize`: rejects mutation when a group is already created (`isCreated == true`) or currently executing a lifecycle callback (`isExecutingCallback == true`), eliminating TOCTOU capacity bypass during `cbCreate` and accounting drift upon destruction.
-  - In `ShowGroup`, snapshotted `authorizedSize` prior to `EnsureCapacity` and bound `postGroup.estimatedSize` to `authorizedSize` upon creation success, guaranteeing that capacity reservation matches exact accounting addition.
-  - Verified live runtime regression execution across all scenarios C1–C12 inside a 32-bit Linux SA-MP dedicated server (`samp03svr`) with zero accounting drift over 100 lifecycle cycles.
+  - In `ShowGroup`, snapshotted `authorizedSize` prior to `EnsureCapacity`, bound `postGroup.estimatedSize` to `authorizedSize` upon creation success, and added callback re-entrancy created-guard, guaranteeing that capacity reservation matches exact accounting addition.
+  - Verified live runtime regression execution across all scenarios C1–C12 and Phase 5.1 gate scenarios G1–G7 inside a 32-bit Linux SA-MP dedicated server (`samp03svr`) with zero accounting drift over 100 lifecycle cycles (19/19 passing).
 - **SUI-003**: Hardened the Pawn → C++ native boundary with comprehensive input validation and safe type conversions across all 19 natives. Status: `FIXED — runtime input validation verified`.
   - Implemented `TryGetNonNegativeUInt32` to eliminate signed-to-unsigned wrap-around where negative Pawn cells (`-1`) were converted into `4294967295` via `static_cast<uint32_t>`. Applied to `size`, `timeout`, `maxCount`, and `threshold`.
   - Implemented `TryGetPriority` strictly constraining priority parameters to valid domain `[0..3]` (`SUI_PRIORITY_LOW` through `SUI_PRIORITY_CRITICAL`).

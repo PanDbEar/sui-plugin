@@ -79,14 +79,15 @@
 - **Area:** Core / Capacity
 - **Status:** FIXED — runtime regression verified
 - **Fix Summary:**
-  - Hardened capacity comparison in `EnsureCapacity` using widened 64-bit arithmetic (`(uint64_t)active + (uint64_t)required <= (uint64_t)threshold`), eliminating unsigned 32-bit addition wrap-around.
-  - Implemented `SUICore::TryAddActiveTextDrawCount` with 64-bit overflow detection and diagnostic logging; rejects addition without mutating state if overflow would occur.
-  - Hardened `SUICore::SubtractActiveTextDrawCount` with diagnostic logging on underflow invariant violation and safe clamp to zero.
+  - Hardened capacity comparison in `EnsureCapacity` using widened 64-bit arithmetic (`(uint64_t)active + (uint64_t)required <= (uint64_t)threshold`), eliminating unsigned 32-bit addition wrap-around across multi-group accumulations.
+  - Enforced `maxTextDraws` as a strict hard capacity ceiling: `SUICore::TryAddActiveTextDrawCount` validates `sum <= maxTextDraws` and rejects addition without mutating state; `EnsureCapacity` pre-rejects `requiredSize > maxTextDraws`.
+  - Enforced configuration invariant `evictionThreshold <= maxTextDraws`: `SetEvictionThreshold` rejects `threshold > maxTextDraws`; `SetMaxTextDraws` rejects lowering `maxCount < evictionThreshold` or `maxCount < activeTextDrawCount`.
+  - Hardened underflow handling in `SUICore::SubtractActiveTextDrawCount`: underflow is classified as corruption containment/recovery and initiates state reconciliation via `SUICore::RecalculateActiveTextDrawCount` across tracked created groups rather than arbitrary zero-clamping.
   - Implemented locking in `SUICore::SetGroupSize`: rejects size mutation while group is created (`isCreated == true`) or currently executing a lifecycle callback (`isExecutingCallback == true`), preventing TOCTOU accounting corruption during `cbCreate` and accounting drift upon destruction.
-  - In `ShowGroup`, snapshotted `authorizedSize` prior to `EnsureCapacity` and bound `postGroup.estimatedSize` to `authorizedSize` upon creation success, guaranteeing that capacity reservation matches exact accounting addition.
-- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/capacity_arithmetic/capacity_arithmetic.pwn` (scenarios C1 through C12). All 12 scenarios passed with 0 crashes, 0 memory corruption, and zero accounting drift across 100 lifecycle cycles. Zero regressions in V1–V10, R1–R10, and A1–A6.
-- **Evidence:** `src/Core.hpp:78-83`, `src/Core.cpp:320-395, 705-757, 908-918`, `tests/capacity_arithmetic/TEST_PLAN.md`.
-- **Planned phase:** Phase 5
+  - In `ShowGroup`, snapshotted `authorizedSize` prior to `EnsureCapacity`, bound `postGroup.estimatedSize` to `authorizedSize` upon creation success, and added callback re-entrancy created-guard, guaranteeing that capacity reservation matches exact accounting addition.
+- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/capacity_arithmetic/capacity_arithmetic.pwn` (scenarios C1 through C12 and Phase 5.1 gate scenarios G1 through G7). All 19 scenarios passed with 0 crashes, 0 memory corruption, and zero accounting drift across 100 lifecycle cycles. Zero regressions in V1–V10, R1–R10, and A1–A6.
+- **Evidence:** `src/Core.hpp:78-87`, `src/Core.cpp:320-410, 765-855, 940-975`, `tests/capacity_arithmetic/TEST_PLAN.md`.
+- **Planned phase:** Phase 5 & Phase 5.1
 
 ---
 

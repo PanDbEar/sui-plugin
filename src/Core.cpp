@@ -383,6 +383,14 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
 
         if (createSuccess)
         {
+            if (postGroup.isCreated)
+            {
+                Debug("ShowGroup warning: group was already created during create callback playerid=%d group=%s",
+                    playerId, groupName.c_str());
+                postGroup.isExecutingCallback = false;
+                return;
+            }
+
             // Lock size to authorizedSize and add to accounting
             postGroup.estimatedSize = authorizedSize;
             if (TryAddActiveTextDrawCount(*postCtx, authorizedSize))
@@ -766,20 +774,44 @@ bool SUICore::TryAddActiveTextDrawCount(PlayerContext& ctx, uint32_t amount)
         return false;
     }
 
-    ctx.activeTextDrawCount = static_cast<uint32_t>(sum);
-
-    if (ctx.activeTextDrawCount > ctx.maxTextDraws)
+    if (sum > static_cast<uint64_t>(ctx.maxTextDraws))
     {
-        Debug("[SUI] Capacity invariant diagnostic: active exceeds maxTextDraws playerid=%d active=%u max=%u",
-            ctx.playerId, ctx.activeTextDrawCount, ctx.maxTextDraws);
+        Debug("[SUI] Capacity invariant violation: sum (%llu) exceeds hard ceiling maxTextDraws (%u) for player %d",
+            sum, ctx.maxTextDraws, ctx.playerId);
+        return false;
     }
 
+    ctx.activeTextDrawCount = static_cast<uint32_t>(sum);
     return true;
 }
 
 void SUICore::AddActiveTextDrawCount(PlayerContext& ctx, uint32_t amount)
 {
     TryAddActiveTextDrawCount(ctx, amount);
+}
+
+bool SUICore::RecalculateActiveTextDrawCount(PlayerContext& ctx)
+{
+    uint64_t sum = 0;
+    for (const auto& [name, group] : ctx.groups)
+    {
+        if (group.isCreated)
+        {
+            sum += static_cast<uint64_t>(group.estimatedSize == 0 ? 1 : group.estimatedSize);
+        }
+    }
+
+    if (sum > static_cast<uint64_t>(UINT32_MAX))
+    {
+        Debug("[SUI] RecalculateActiveTextDrawCount overflow playerid=%d", ctx.playerId);
+        ctx.activeTextDrawCount = ctx.maxTextDraws;
+        return false;
+    }
+
+    ctx.activeTextDrawCount = static_cast<uint32_t>(sum);
+    Debug("[SUI] RecalculateActiveTextDrawCount reconciled activeTextDrawCount=%u playerid=%d",
+        ctx.activeTextDrawCount, ctx.playerId);
+    return true;
 }
 
 void SUICore::SubtractActiveTextDrawCount(PlayerContext& ctx, uint32_t amount)
@@ -790,13 +822,13 @@ void SUICore::SubtractActiveTextDrawCount(PlayerContext& ctx, uint32_t amount)
     }
     else
     {
-        Debug("[SUI] Capacity invariant violation: underflow subtraction playerid=%d active=%u subtract=%u",
+        Debug("[SUI] Capacity invariant violation: underflow subtraction playerid=%d active=%u subtract=%u. Reconciling state.",
             ctx.playerId, ctx.activeTextDrawCount, amount);
-        ctx.activeTextDrawCount = 0;
+        RecalculateActiveTextDrawCount(ctx);
     }
 }
 
-void SUICore::SetMaxTextDraws(int playerId, uint32_t maxCount)
+bool SUICore::SetMaxTextDraws(int playerId, uint32_t maxCount)
 {
     auto& ctx = players[playerId];
     ctx.playerId = playerId;
@@ -806,21 +838,33 @@ void SUICore::SetMaxTextDraws(int playerId, uint32_t maxCount)
         maxCount = 256;
     }
 
-    ctx.maxTextDraws = maxCount;
-
-    if (ctx.evictionThreshold > ctx.maxTextDraws)
+    // Invariant: cannot lower max below current active textdraws
+    if (maxCount < ctx.activeTextDrawCount)
     {
-        ctx.evictionThreshold = ctx.maxTextDraws;
+        Debug("SetMaxTextDraws rejected: maxCount (%u) < activeTextDrawCount (%u) playerid=%d",
+            maxCount, ctx.activeTextDrawCount, playerId);
+        return false;
     }
+
+    // Invariant: cannot lower max below current eviction threshold
+    if (maxCount < ctx.evictionThreshold)
+    {
+        Debug("SetMaxTextDraws rejected: maxCount (%u) < evictionThreshold (%u) playerid=%d",
+            maxCount, ctx.evictionThreshold, playerId);
+        return false;
+    }
+
+    ctx.maxTextDraws = maxCount;
 
     Debug("SetMaxTextDraws playerid=%d max=%u threshold=%u",
         playerId,
         ctx.maxTextDraws,
         ctx.evictionThreshold
     );
+    return true;
 }
 
-void SUICore::SetEvictionThreshold(int playerId, uint32_t threshold)
+bool SUICore::SetEvictionThreshold(int playerId, uint32_t threshold)
 {
     auto& ctx = players[playerId];
     ctx.playerId = playerId;
@@ -830,9 +874,12 @@ void SUICore::SetEvictionThreshold(int playerId, uint32_t threshold)
         threshold = 230;
     }
 
+    // Invariant: evictionThreshold cannot exceed maxTextDraws
     if (threshold > ctx.maxTextDraws)
     {
-        threshold = ctx.maxTextDraws;
+        Debug("SetEvictionThreshold rejected: threshold (%u) > maxTextDraws (%u) playerid=%d",
+            threshold, ctx.maxTextDraws, playerId);
+        return false;
     }
 
     ctx.evictionThreshold = threshold;
@@ -842,6 +889,7 @@ void SUICore::SetEvictionThreshold(int playerId, uint32_t threshold)
         ctx.evictionThreshold,
         ctx.maxTextDraws
     );
+    return true;
 }
 
 void SUICore::SetGroupPriority(int playerId, const std::string& groupName, uint8_t priority)
@@ -906,15 +954,23 @@ bool SUICore::EnsureCapacity(PlayerContext& ctx, uint32_t requiredSize)
             return false;
         }
 
+        if (requiredSize > currentCtx->maxTextDraws)
+        {
+            Debug("EnsureCapacity failed: requiredSize (%u) exceeds maxTextDraws (%u) playerid=%d",
+                requiredSize, currentCtx->maxTextDraws, playerId);
+            return false;
+        }
+
         // Overflow-safe capacity comparison using widened 64-bit space
         uint64_t total = static_cast<uint64_t>(currentCtx->activeTextDrawCount) + static_cast<uint64_t>(requiredSize);
-        if (total <= static_cast<uint64_t>(currentCtx->evictionThreshold))
+        if (total <= static_cast<uint64_t>(currentCtx->evictionThreshold) && total <= static_cast<uint64_t>(currentCtx->maxTextDraws))
         {
-            Debug("EnsureCapacity OK playerid=%d active=%u required=%u threshold=%u",
+            Debug("EnsureCapacity OK playerid=%d active=%u required=%u threshold=%u max=%u",
                 playerId,
                 currentCtx->activeTextDrawCount,
                 requiredSize,
-                currentCtx->evictionThreshold
+                currentCtx->evictionThreshold,
+                currentCtx->maxTextDraws
             );
             return true;
         }

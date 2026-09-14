@@ -80,8 +80,9 @@ public:
     static bool TryAddActiveTextDrawCount(PlayerContext& ctx, uint32_t amount);
     static void AddActiveTextDrawCount(PlayerContext& ctx, uint32_t amount);
     static void SubtractActiveTextDrawCount(PlayerContext& ctx, uint32_t amount);
-    static void SetMaxTextDraws(int playerId, uint32_t maxCount);
-    static void SetEvictionThreshold(int playerId, uint32_t threshold);
+    static bool RecalculateActiveTextDrawCount(PlayerContext& ctx);
+    static bool SetMaxTextDraws(int playerId, uint32_t maxCount);
+    static bool SetEvictionThreshold(int playerId, uint32_t threshold);
     static void SetGroupPriority(int playerId, const std::string& groupName, uint8_t priority);
     static bool EnsureCapacity(PlayerContext& ctx, uint32_t requiredSize);
     static bool EvictOneHiddenGroup(PlayerContext& ctx);

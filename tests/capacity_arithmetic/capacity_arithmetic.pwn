@@ -14,6 +14,14 @@ new g_c10_pass = 0;
 new g_c11_pass = 0;
 new g_c12_pass = 0;
 
+new g_g1_pass = 0;
+new g_g2_pass = 0;
+new g_g3_pass = 0;
+new g_g4_pass = 0;
+new g_g5_pass = 0;
+new g_g6_pass = 0;
+new g_g7_pass = 0;
+
 new g_c5_set_size_res = -1;
 
 main()
@@ -421,6 +429,201 @@ public CheckC9Unloaded()
             act_after_fs, final_act);
     }
 
+    RunAccountingGateTests();
+}
+
+forward RunAccountingGateTests();
+public RunAccountingGateTests()
+{
+    print("\n================================================================");
+    print("      RUNNING SUI PHASE 5.1 ACCOUNTING GATE TESTS (G1-G7)       ");
+    print("================================================================");
+
+    // Ensure clean initial state
+    SUI_ResetPlayer(0);
+
+    // -------------------------------------------------------------
+    // G1: max = 256, threshold = 230 -> Valid
+    // -------------------------------------------------------------
+    print("\n[TEST-G1] Testing Standard Bounds (max=256, threshold=230)...");
+    new g1_max_res = SUI_SetMaxTextDraws(0, 256);
+    new g1_thresh_res = SUI_SetEvictionThreshold(0, 230);
+    if (g1_max_res == 1 && g1_thresh_res == 1)
+    {
+        g_g1_pass = 1;
+        print("[TEST-G1] PASS: Standard max=256 and threshold=230 accepted.");
+    }
+    else
+    {
+        printf("[TEST-G1] FAIL: max_res=%d thresh_res=%d", g1_max_res, g1_thresh_res);
+    }
+
+    // -------------------------------------------------------------
+    // G2: threshold = max + 1 -> Reject, state unchanged
+    // -------------------------------------------------------------
+    print("\n[TEST-G2] Testing Threshold > Max Rejection (threshold=257 with max=256)...");
+    new g2_res = SUI_SetEvictionThreshold(0, 257);
+    if (g2_res == 0)
+    {
+        g_g2_pass = 1;
+        print("[TEST-G2] PASS: Threshold > max was rejected (res=0), state unchanged.");
+    }
+    else
+    {
+        printf("[TEST-G2] FAIL: Expected res=0, got res=%d", g2_res);
+    }
+
+    // -------------------------------------------------------------
+    // G3: max = 256, threshold = 230, set max = 100 -> Reject (max < threshold)
+    // -------------------------------------------------------------
+    print("\n[TEST-G3] Testing Max < Threshold Rejection (set max=100 with threshold=230)...");
+    new g3_res = SUI_SetMaxTextDraws(0, 100);
+    if (g3_res == 0)
+    {
+        g_g3_pass = 1;
+        print("[TEST-G3] PASS: Lowering max below threshold rejected (res=0), max unchanged.");
+    }
+    else
+    {
+        printf("[TEST-G3] FAIL: Expected res=0, got res=%d", g3_res);
+    }
+
+    // -------------------------------------------------------------
+    // G4: max = 100, threshold = 90, active = 80, req = 15 -> Exceeds threshold
+    // -------------------------------------------------------------
+    print("\n[TEST-G4] Testing Threshold Admission Boundary (active=80, req=15, thresh=90, max=100)...");
+    SUI_SetEvictionThreshold(0, 80);
+    SUI_SetMaxTextDraws(0, 100);
+    SUI_SetEvictionThreshold(0, 90);
+
+    SUI_CreatePlayerFactoryGroup(0, "g4_base", "OnDummy_Create", "OnDummy_Destroy", "OnDummy_Show", "OnDummy_Hide");
+    SUI_SetGroupSize(0, "g4_base", 80);
+    SUI_SetGroupEvictable(0, "g4_base", false); // protect from eviction
+    SUI_ShowGroup(0, "g4_base");
+    new g4_act_base = SUI_GetActiveTextDrawCount(0); // 80
+
+    SUI_CreatePlayerFactoryGroup(0, "g4_cand", "OnDummy_Create", "OnDummy_Destroy", "OnDummy_Show", "OnDummy_Hide");
+    SUI_SetGroupSize(0, "g4_cand", 15);
+    SUI_ShowGroup(0, "g4_cand"); // 80 + 15 = 95 > threshold (90); no evictable group
+    new g4_cand_created = SUI_IsGroupCreated(0, "g4_cand");
+    new g4_act_after = SUI_GetActiveTextDrawCount(0);
+
+    SUI_DestroyGroup(0, "g4_base");
+    SUI_DestroyGroup(0, "g4_cand");
+
+    if (g4_act_base == 80 && g4_cand_created == 0 && g4_act_after == 80)
+    {
+        g_g4_pass = 1;
+        print("[TEST-G4] PASS: Threshold exceeded without eviction -> rejected, active remains 80.");
+    }
+    else
+    {
+        printf("[TEST-G4] FAIL: base_act=%d cand_created=%d act_after=%d",
+            g4_act_base, g4_cand_created, g4_act_after);
+    }
+
+    // -------------------------------------------------------------
+    // G5: Hard Max Ceiling (max = 100, active = 95, req = 10 -> Projected 105 > max 100)
+    // -------------------------------------------------------------
+    print("\n[TEST-G5] Testing Hard Max Ceiling Enforcement (active=95, req=10, max=100)...");
+    SUI_SetEvictionThreshold(0, 80);
+    SUI_SetMaxTextDraws(0, 100);
+    SUI_SetEvictionThreshold(0, 95);
+
+    SUI_CreatePlayerFactoryGroup(0, "g5_base", "OnDummy_Create", "OnDummy_Destroy", "OnDummy_Show", "OnDummy_Hide");
+    SUI_SetGroupSize(0, "g5_base", 95);
+    SUI_SetGroupEvictable(0, "g5_base", false);
+    SUI_ShowGroup(0, "g5_base");
+    new g5_act_base = SUI_GetActiveTextDrawCount(0); // 95
+
+    SUI_CreatePlayerFactoryGroup(0, "g5_over", "OnDummy_Create", "OnDummy_Destroy", "OnDummy_Show", "OnDummy_Hide");
+    SUI_SetGroupSize(0, "g5_over", 10);
+    SUI_ShowGroup(0, "g5_over");
+    new g5_over_created = SUI_IsGroupCreated(0, "g5_over");
+    new g5_act_final = SUI_GetActiveTextDrawCount(0);
+
+    SUI_DestroyGroup(0, "g5_base");
+    SUI_DestroyGroup(0, "g5_over");
+
+    if (g5_act_base == 95 && g5_over_created == 0 && g5_act_final == 95)
+    {
+        g_g5_pass = 1;
+        print("[TEST-G5] PASS: Projected sum (105) > max (100) rejected; active never exceeded 95.");
+    }
+    else
+    {
+        printf("[TEST-G5] FAIL: base=%d over_created=%d final=%d",
+            g5_act_base, g5_over_created, g5_act_final);
+    }
+
+    // -------------------------------------------------------------
+    // G6: Active Count vs Lowered Limit (active = 50, attempt max = 40)
+    // -------------------------------------------------------------
+    print("\n[TEST-G6] Testing Active Count vs Lowered Max Limit...");
+    SUI_ResetPlayer(0);
+    SUI_SetMaxTextDraws(0, 256);
+    SUI_SetEvictionThreshold(0, 230);
+
+    SUI_CreatePlayerFactoryGroup(0, "g6_grp", "OnDummy_Create", "OnDummy_Destroy", "OnDummy_Show", "OnDummy_Hide");
+    SUI_SetGroupSize(0, "g6_grp", 50);
+    SUI_ShowGroup(0, "g6_grp");
+    new g6_act = SUI_GetActiveTextDrawCount(0); // 50
+
+    SUI_SetEvictionThreshold(0, 30);
+    new g6_lower_res = SUI_SetMaxTextDraws(0, 40);
+    new g6_act_after = SUI_GetActiveTextDrawCount(0);
+
+    SUI_DestroyGroup(0, "g6_grp");
+    SUI_ResetPlayer(0);
+
+    if (g6_act == 50 && g6_lower_res == 0 && g6_act_after == 50)
+    {
+        g_g6_pass = 1;
+        print("[TEST-G6] PASS: Lowering max below active count rejected (res=0), active preserved.");
+    }
+    else
+    {
+        printf("[TEST-G6] FAIL: g6_act=%d lower_res=%d act_after=%d",
+            g6_act, g6_lower_res, g6_act_after);
+    }
+
+    // -------------------------------------------------------------
+    // G7: Accounting Invariant I1 Verification & Reconciliation
+    // -------------------------------------------------------------
+    print("\n[TEST-G7] Testing I1 Conservation across Lifecycle Transitions...");
+    SUI_ResetPlayer(0);
+    SUI_SetMaxTextDraws(0, 256);
+    SUI_SetEvictionThreshold(0, 230);
+
+    SUI_CreatePlayerFactoryGroup(0, "g7_1", "OnDummy_Create", "OnDummy_Destroy", "OnDummy_Show", "OnDummy_Hide");
+    SUI_SetGroupSize(0, "g7_1", 12);
+    SUI_ShowGroup(0, "g7_1");
+
+    SUI_CreatePlayerFactoryGroup(0, "g7_2", "OnDummy_Create", "OnDummy_Destroy", "OnDummy_Show", "OnDummy_Hide");
+    SUI_SetGroupSize(0, "g7_2", 18);
+    SUI_ShowGroup(0, "g7_2");
+
+    new g7_act1 = SUI_GetActiveTextDrawCount(0); // 12 + 18 = 30
+    SUI_HideGroup(0, "g7_1"); // hidden, but still created! count must remain 30!
+    new g7_act2 = SUI_GetActiveTextDrawCount(0); // 30
+
+    SUI_DestroyGroup(0, "g7_2"); // count must become 12
+    new g7_act3 = SUI_GetActiveTextDrawCount(0); // 12
+
+    SUI_ResetPlayer(0);
+    new g7_act4 = SUI_GetActiveTextDrawCount(0); // 0
+
+    if (g7_act1 == 30 && g7_act2 == 30 && g7_act3 == 12 && g7_act4 == 0)
+    {
+        g_g7_pass = 1;
+        print("[TEST-G7] PASS: I1 Conservation verified (30 -> 30 hidden -> 12 -> 0 reset).");
+    }
+    else
+    {
+        printf("[TEST-G7] FAIL: g7_act1=%d g7_act2=%d g7_act3=%d g7_act4=%d",
+            g7_act1, g7_act2, g7_act3, g7_act4);
+    }
+
     PrintCapacityResults();
 }
 
@@ -454,19 +657,38 @@ public PrintCapacityResults()
     else printf("C11 (Capacity Failure Atomicity):          FAIL");
     if (g_c12_pass) printf("C12 (Large Values / Wrap Proof):           PASS");
     else printf("C12 (Large Values / Wrap Proof):           FAIL");
+    print("----------------------------------------------------------------");
+    print("      SUI ACCOUNTING GATE REGRESSION RESULTS (G1-G7)           ");
+    print("----------------------------------------------------------------");
+    if (g_g1_pass) printf("G1  (Standard Bounds Validation):          PASS");
+    else printf("G1  (Standard Bounds Validation):          FAIL");
+    if (g_g2_pass) printf("G2  (Threshold > Max Rejection):           PASS");
+    else printf("G2  (Threshold > Max Rejection):           FAIL");
+    if (g_g3_pass) printf("G3  (Max < Threshold Rejection):           PASS");
+    else printf("G3  (Max < Threshold Rejection):           FAIL");
+    if (g_g4_pass) printf("G4  (Threshold Boundary Rejection):        PASS");
+    else printf("G4  (Threshold Boundary Rejection):        FAIL");
+    if (g_g5_pass) printf("G5  (Hard Max Ceiling Enforcement):        PASS");
+    else printf("G5  (Hard Max Ceiling Enforcement):        FAIL");
+    if (g_g6_pass) printf("G6  (Active vs Lowered Max Rejection):     PASS");
+    else printf("G6  (Active vs Lowered Max Rejection):     FAIL");
+    if (g_g7_pass) printf("G7  (I1 Conservation Verification):        PASS");
+    else printf("G7  (I1 Conservation Verification):        FAIL");
     print("================================================================");
 
-    new total_pass = g_c1_pass + g_c2_pass + g_c3_pass + g_c4_pass + g_c5_pass +
-                     g_c6_pass + g_c7_pass + g_c8_pass + g_c9_pass + g_c10_pass +
-                     g_c11_pass + g_c12_pass;
+    new c_pass = g_c1_pass + g_c2_pass + g_c3_pass + g_c4_pass + g_c5_pass +
+                 g_c6_pass + g_c7_pass + g_c8_pass + g_c9_pass + g_c10_pass +
+                 g_c11_pass + g_c12_pass;
+    new g_pass = g_g1_pass + g_g2_pass + g_g3_pass + g_g4_pass + g_g5_pass +
+                 g_g6_pass + g_g7_pass;
 
-    if (total_pass == 12)
+    if (c_pass == 12 && g_pass == 7)
     {
-        print("OVERALL RESULT: ALL CAPACITY ARITHMETIC TESTS PASSED!");
+        print("OVERALL RESULT: ALL CAPACITY & GATE TESTS PASSED! (19/19)");
     }
     else
     {
-        printf("OVERALL RESULT: %d/12 TESTS PASSED.", total_pass);
+        printf("OVERALL RESULT: %d/12 C-TESTS, %d/7 G-TESTS PASSED.", c_pass, g_pass);
     }
     print("================================================================\n");
 
