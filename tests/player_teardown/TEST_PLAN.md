@@ -1,4 +1,4 @@
-﻿# SUI-005: Player Teardown Transactions & Failure Preservation Test Plan
+# SUI-005: Player Teardown Transactions & Failure Preservation Test Plan
 
 ## Overview
 
@@ -76,3 +76,22 @@ This suite validates the deterministic player teardown architecture established 
   4. Manually destroy `t16_recovered`.
   5. Call `SUI_CleanupPlayer(0)` to purge player cleanly.
 - **Verification**: Proves player is not permanently locked in teardown after a failed reset.
+
+### Test T17: Read-Only Queries During Teardown
+- **Mechanism**: Inside `cbDestroy` of group `t17_grp` during `SUI_CleanupPlayer(0)`, the callback invokes read-only query natives:
+  - `SUI_GetActiveTextDrawCount(playerid)`
+  - `SUI_IsGroupCreated(playerid, "t17_grp")`
+  - `SUI_IsGroupVisible(playerid, "t17_grp")`
+  - `SUI_IsGroupEvictable(playerid, "t17_grp")`
+  - `SUI_PrintPlayerState(playerid)`
+- **Verification**: Query natives execute safely without mutating state, triggering re-entrancy locks, or interrupting the teardown loop. Teardown completes cleanly, and final capacity is 0.
+
+### Test T18: Hide Success / Destroy Failure Preservation
+- **Mechanism**: Group `t18_grp` is visible (`isCreated == 1`, `isVisible == 1`, size 6). `SUI_ResetPlayer(0)` begins. `cbHide` succeeds, setting `isVisible = false`. However, `cbDestroy` specifies a nonexistent callback and fails.
+- **Verification**: Verifies best-effort reset with failure preservation:
+  - `SUI_ResetPlayer` returns 0.
+  - `SUI_IsGroupCreated(0, "t18_grp")` remains 1.
+  - `SUI_IsGroupVisible(0, "t18_grp")` is 0 (hide succeeded before destroy failed).
+  - `SUI_GetActiveTextDrawCount(0)` remains 6 (capacity preserved).
+  - Player context is retained, and `teardownState` recovers to `None`.
+  - Cleaned up via `SUI_CleanupPlayer(0)`.

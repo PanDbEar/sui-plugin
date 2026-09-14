@@ -17,6 +17,8 @@ new g_test_t13_pass = 0;
 new g_test_t14_pass = 0;
 new g_test_t15_pass = 0;
 new g_test_t16_pass = 0;
+new g_test_t17_pass = 0;
+new g_test_t18_pass = 0;
 
 // Callbacks for T1
 forward OnT1_Vis_Create(playerid); public OnT1_Vis_Create(playerid) { return 1; }
@@ -249,6 +251,31 @@ forward OnT16_Recov_Create(playerid); public OnT16_Recov_Create(playerid) { retu
 forward OnT16_Recov_Destroy(playerid); public OnT16_Recov_Destroy(playerid) { return 1; }
 forward OnT16_Recov_Show(playerid); public OnT16_Recov_Show(playerid) { return 1; }
 forward OnT16_Recov_Hide(playerid); public OnT16_Recov_Hide(playerid) { return 1; }
+
+// Callbacks for T17
+new g_t17_act = -1;
+new g_t17_cr = -1;
+new g_t17_vis = -1;
+new g_t17_evict = -1;
+forward OnT17_Create(playerid); public OnT17_Create(playerid) { return 1; }
+forward OnT17_Show(playerid); public OnT17_Show(playerid) { return 1; }
+forward OnT17_Hide(playerid); public OnT17_Hide(playerid) { return 1; }
+forward OnT17_Destroy(playerid);
+public OnT17_Destroy(playerid)
+{
+    g_t17_act = SUI_GetActiveTextDrawCount(playerid);
+    g_t17_cr = SUI_IsGroupCreated(playerid, "t17_grp");
+    g_t17_vis = SUI_IsGroupVisible(playerid, "t17_grp");
+    g_t17_evict = SUI_IsGroupEvictable(playerid, "t17_grp");
+    SUI_PrintPlayerState(playerid);
+    printf("[TEST-T17] In cbDestroy: act=%d cr=%d vis=%d evict=%d", g_t17_act, g_t17_cr, g_t17_vis, g_t17_evict);
+    return 1;
+}
+
+// Callbacks for T18
+forward OnT18_Create(playerid); public OnT18_Create(playerid) { return 1; }
+forward OnT18_Show(playerid); public OnT18_Show(playerid) { return 1; }
+forward OnT18_Hide(playerid); public OnT18_Hide(playerid) { return 1; }
 
 public OnGameModeInit()
 {
@@ -686,10 +713,70 @@ public OnGameModeInit()
     }
 
     // -------------------------------------------------------------
+    // T17: Read-Only Queries During Teardown
+    // -------------------------------------------------------------
+    print("\n[TEST-T17] Starting T17 (Read-Only Queries During Teardown)...");
+    SUI_CleanupPlayer(0);
+    SUI_CreatePlayerFactoryGroup(0, "t17_grp", "OnT17_Create", "OnT17_Destroy", "OnT17_Show", "OnT17_Hide");
+    SUI_SetGroupSize(0, "t17_grp", 5);
+    SUI_ShowGroup(0, "t17_grp");
+    new t17_pre_act = SUI_GetActiveTextDrawCount(0);
+    new t17_cleanup_res = SUI_CleanupPlayer(0);
+    new t17_post_act = SUI_GetActiveTextDrawCount(0);
+
+    if (t17_pre_act == 5 && t17_cleanup_res == 1 && t17_post_act == 0 &&
+        g_t17_act == 5 && g_t17_cr == 1 && g_t17_evict == 1)
+    {
+        g_test_t17_pass = 1;
+        print("[TEST-T17] PASS: Read-only queries executed safely during teardown without mutation or recursion.");
+    }
+    else
+    {
+        printf("[TEST-T17] FAIL: pre_act=%d clean_res=%d post_act=%d in_cb_act=%d in_cb_cr=%d in_cb_evict=%d",
+            t17_pre_act, t17_cleanup_res, t17_post_act, g_t17_act, g_t17_cr, g_t17_evict);
+    }
+
+    // -------------------------------------------------------------
+    // T18: Hide Success / Destroy Failure Preservation
+    // -------------------------------------------------------------
+    print("\n[TEST-T18] Starting T18 (Hide Success / Destroy Failure Preservation)...");
+    SUI_CleanupPlayer(0);
+    SUI_CreatePlayerFactoryGroup(0, "t18_grp", "OnT18_Create", "NonExistent_Destroy", "OnT18_Show", "OnT18_Hide");
+    SUI_SetGroupSize(0, "t18_grp", 6);
+    SUI_ShowGroup(0, "t18_grp");
+
+    new t18_pre_cr = SUI_IsGroupCreated(0, "t18_grp");
+    new t18_pre_vis = SUI_IsGroupVisible(0, "t18_grp");
+    new t18_pre_act = SUI_GetActiveTextDrawCount(0);
+
+    new t18_reset_res = SUI_ResetPlayer(0);
+
+    new t18_post_cr = SUI_IsGroupCreated(0, "t18_grp");
+    new t18_post_vis = SUI_IsGroupVisible(0, "t18_grp");
+    new t18_post_act = SUI_GetActiveTextDrawCount(0);
+
+    SUI_CleanupPlayer(0);
+    new t18_final_act = SUI_GetActiveTextDrawCount(0);
+
+    if (t18_pre_cr == 1 && t18_pre_vis == 1 && t18_pre_act == 6 &&
+        t18_reset_res == 0 && t18_post_cr == 1 && t18_post_vis == 0 &&
+        t18_post_act == 6 && t18_final_act == 0)
+    {
+        g_test_t18_pass = 1;
+        print("[TEST-T18] PASS: Best-effort reset preserved failed group as hidden with capacity retained.");
+    }
+    else
+    {
+        printf("[TEST-T18] FAIL: pre=(%d,%d,%d) res=%d post=(%d,%d,%d) fin=%d",
+            t18_pre_cr, t18_pre_vis, t18_pre_act, t18_reset_res,
+            t18_post_cr, t18_post_vis, t18_post_act, t18_final_act);
+    }
+
+    // -------------------------------------------------------------
     // Results Summary
     // -------------------------------------------------------------
     print("\n================================================================");
-    print("           SUI PLAYER TEARDOWN TEST RESULTS (T1-T16)           ");
+    print("           SUI PLAYER TEARDOWN TEST RESULTS (T1-T18)           ");
     print("================================================================");
     printf("T1  (Normal Cleanup):                         %s", (g_test_t1_pass) ? ("PASS") : ("FAIL"));
     printf("T2  (Cleanup Re-entrant Registration Block):  %s", (g_test_t2_pass) ? ("PASS") : ("FAIL"));
@@ -707,15 +794,18 @@ public OnGameModeInit()
     printf("T14 (Missing Destroy Callback in Reset):      %s", (g_test_t14_pass) ? ("PASS") : ("FAIL"));
     printf("T15 (Missing Destroy Callback in Cleanup):    %s", (g_test_t15_pass) ? ("PASS") : ("FAIL"));
     printf("T16 (Teardown Flag Recovery After Error):     %s", (g_test_t16_pass) ? ("PASS") : ("FAIL"));
+    printf("T17 (Read-Only Queries During Teardown):      %s", (g_test_t17_pass) ? ("PASS") : ("FAIL"));
+    printf("T18 (Hide Success / Destroy Failure Preserv): %s", (g_test_t18_pass) ? ("PASS") : ("FAIL"));
     print("================================================================");
 
     new total_pass = g_test_t1_pass + g_test_t2_pass + g_test_t3_pass + g_test_t4_pass +
                      g_test_t5_pass + g_test_t6_pass + g_test_t7_pass + g_test_t8_pass +
                      g_test_t9_pass + g_test_t10_pass + g_test_t11_pass + g_test_t12_pass +
-                     g_test_t13_pass + g_test_t14_pass + g_test_t15_pass + g_test_t16_pass;
+                     g_test_t13_pass + g_test_t14_pass + g_test_t15_pass + g_test_t16_pass +
+                     g_test_t17_pass + g_test_t18_pass;
 
-    printf("TOTAL: %d / 16 PASSED", total_pass);
-    if (total_pass == 16)
+    printf("TOTAL: %d / 18 PASSED", total_pass);
+    if (total_pass == 18)
     {
         print("OVERALL RESULT: ALL PLAYER TEARDOWN TESTS PASSED!");
     }

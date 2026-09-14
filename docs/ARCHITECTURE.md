@@ -208,3 +208,24 @@ SUI strictly differentiates between terminal disconnect cleanup and non-terminal
 ### 6.3. Snapshot and Pruning Order
 Both routines snapshot target groups as a vector of `{groupName, instanceId}` tuples. Uncreated groups (`isCreated == false`) are removed directly from the `groups` container before iterating, ensuring zero callbacks are invoked for unallocated resources while preventing iterator invalidation.
 
+### 6.4. Read-Only Query Policy During Teardown
+While all mutating operations (`RegisterFactoryGroup`, `ShowGroup`, `HideGroup`, `DestroyGroup`, `SetGroupSize`, etc.) are strictly rejected during active teardown, read-only diagnostic and query natives remain fully operational:
+- `SUI_GetActiveTextDrawCount(playerid)`
+- `SUI_IsGroupCreated(playerid, group[])`
+- `SUI_IsGroupVisible(playerid, group[])`
+- `SUI_IsGroupEvictable(playerid, group[])`
+- `SUI_PrintPlayerState(playerid)`
+
+These operations perform non-mutating lookups against the active `PlayerContext` and `groups` container. Callbacks executing within `cbDestroy` may query active counts or group visibility for logging or diagnostic decisions without causing recursion or mutating state.
+
+### 6.5. Best-Effort Reset Semantics & Partial-Failure Preservation
+`ResetPlayer` is fundamentally a **best-effort reset with failure preservation**, not a transactional rollback system:
+- When a visible group undergoes destruction, `cbHide` is executed first.
+- If `cbHide` succeeds, the group is marked hidden (`isVisible = false`) and its hidden timestamp is updated.
+- If the subsequent `cbDestroy` callback fails (e.g. missing public function or AMX runtime execution error), destruction aborts.
+- In this partial-failure state, the group remains created (`isCreated == true`), is marked hidden (`isVisible = false`), and its textdraw capacity remains reserved (`activeTextDrawCount` is not decremented).
+- `ResetPlayer` does not attempt to "unhide" or roll back the visual transition; instead, it preserves the failed group in tracking to prevent resource leakage, restores `currentCtx->teardownState = PlayerTeardownState::None`, and returns `0` (`false`).
+
+### 6.6. Terminal Cleanup Scope & External Resource Disclaimer
+In `SUI_CleanupPlayer`, SUI unconditionally purges the internal C++ `PlayerContext` and associated container structures from plugin memory upon loop completion, ensuring zero tracking memory leaks in the plugin. However, if an external callback fails during destroy execution, host SA-MP textdraw IDs allocated inside Pawn scripts cannot be automatically reclaimed by SUI (as detailed under SUI-018).
+
