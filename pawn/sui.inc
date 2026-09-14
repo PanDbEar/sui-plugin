@@ -227,6 +227,11 @@ native SUI_SetDebug(bool:enabled);
  * Convenience stock to register a factory group and configure initial size, timeout, priority, and eviction.
  * Prevalidates arguments and executes all configuration setters sequentially.
  * 
+ * Note: If prevalidation or initial registration fails, no group is created. If a downstream
+ * setter fails (e.g. attempting to configure an already-created group whose size cannot be changed),
+ * this helper returns 0 without calling SUI_DestroyGroup, ensuring existing live UI groups
+ * are never inadvertently destroyed.
+ * 
  * @param playerid Target player ID (must be valid: 0 <= playerid < 1000)
  * @param group Unique group name
  * @param cbCreate Public create callback name
@@ -268,7 +273,6 @@ stock SUI_RegisterGroup(
         !SUI_SetGroupPriority(playerid, group, priority) ||
         !SUI_SetGroupEvictable(playerid, group, evictable))
     {
-        SUI_DestroyGroup(playerid, group);
         return 0;
     }
 

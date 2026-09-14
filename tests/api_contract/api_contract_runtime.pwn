@@ -2,7 +2,7 @@
 #include "../../pawn/sui.inc"
 
 // ============================================================================
-// SUI PHASE 12.1: API CONTRACT & STOCK HELPER RUNTIME SUITE (AS1–AS8)
+// SUI PHASE 12.2: API CONTRACT & STOCK HELPER RUNTIME SUITE (AS1–AS9)
 // ============================================================================
 
 new g_test_as1_pass = 0;
@@ -13,6 +13,7 @@ new g_test_as5_pass = 0;
 new g_test_as6_pass = 0;
 new g_test_as7_pass = 0;
 new g_test_as8_pass = 0;
+new g_test_as9_pass = 0;
 
 main()
 {
@@ -23,6 +24,14 @@ forward OnAS_Create(playerid); public OnAS_Create(playerid) { return 1; }
 forward OnAS_Destroy(playerid); public OnAS_Destroy(playerid) { return 1; }
 forward OnAS_Show(playerid); public OnAS_Show(playerid) { return 1; }
 forward OnAS_Hide(playerid); public OnAS_Hide(playerid) { return 1; }
+
+new g_as9_destroy_called = 0;
+forward OnAS9_Destroy(playerid);
+public OnAS9_Destroy(playerid)
+{
+    g_as9_destroy_called++;
+    return 1;
+}
 
 // ----------------------------------------------------------------------------
 // AS1: Valid SUI_RegisterGroup Setup
@@ -276,13 +285,13 @@ Test_AS7_UsableConfig()
 }
 
 // ----------------------------------------------------------------------------
-// AS8: Failed Helper Leaves No Partial Registration
+// AS8: Prevalidation Failure Leaves No Registration
 // ----------------------------------------------------------------------------
 Test_AS8_NoPartialState()
 {
     SUI_CleanupPlayer(0);
 
-    // Try registering with invalid priority 99 (must fail)
+    // Try registering with invalid priority 99 (prevalidation must reject before registration)
     new rFail = SUI_RegisterGroup(0, "as8_grp", "OnAS_Create", "OnAS_Destroy", "OnAS_Show", "OnAS_Hide", 6, 30000, 99, true);
     if (rFail != 0)
     {
@@ -325,16 +334,114 @@ Test_AS8_NoPartialState()
 
     SUI_CleanupPlayer(0);
     g_test_as8_pass = 1;
-    print("[TEST-AS8] PASS: Failed helper leaves zero blocking state; subsequent registration clean.");
+    print("[TEST-AS8] PASS: Prevalidation failure leaves no registration; subsequent registration clean.");
+}
+
+// ----------------------------------------------------------------------------
+// AS9: Existing Created Group Re-registration Safety
+// ----------------------------------------------------------------------------
+Test_AS9_ExistingGroupSafety()
+{
+    SUI_CleanupPlayer(0);
+    g_as9_destroy_called = 0;
+
+    print("[TEST-AS9] Step 1: Register and show a live group...");
+    // 1. Register and show a live group
+    new r1 = SUI_RegisterGroup(0, "as9_grp", "OnAS_Create", "OnAS9_Destroy", "OnAS_Show", "OnAS_Hide", 5, 30000, SUI_PRIORITY_NORMAL, true);
+    if (r1 != 1)
+    {
+        printf("[TEST-AS9] FAIL: Initial registration returned %d", r1);
+        return;
+    }
+
+    if (!SUI_ShowGroup(0, "as9_grp"))
+    {
+        print("[TEST-AS9] FAIL: Initial show failed");
+        return;
+    }
+
+    if (!SUI_IsGroupCreated(0, "as9_grp") || !SUI_IsGroupVisible(0, "as9_grp"))
+    {
+        print("[TEST-AS9] FAIL: Group not created or not visible");
+        return;
+    }
+
+    if (SUI_GetActiveTextDrawCount(0) != 5)
+    {
+        printf("[TEST-AS9] FAIL: Initial active count is %d (5 expected)", SUI_GetActiveTextDrawCount(0));
+        return;
+    }
+
+    print("[TEST-AS9] Step 2: Attempting to re-register already created group with different size...");
+    // 2. Attempt to re-register the ALREADY CREATED group with different size
+    // SUI_SetGroupSize will fail on an already created group, so SUI_RegisterGroup returns 0.
+    // Crucially: under Model B, SUI_RegisterGroup must NOT call SUI_DestroyGroup!
+    new r2 = SUI_RegisterGroup(0, "as9_grp", "OnAS_Create", "OnAS9_Destroy", "OnAS_Show", "OnAS_Hide", 10, 30000, SUI_PRIORITY_NORMAL, true);
+    if (r2 != 0)
+    {
+        printf("[TEST-AS9] FAIL: Re-registering created group with new size returned %d (0 expected)", r2);
+        return;
+    }
+
+    print("[TEST-AS9] Step 3: Verifying existing live group remains intact (not destroyed by failed helper)...");
+    // 3. Verify existing live group was NOT destroyed
+    if (!SUI_IsGroupCreated(0, "as9_grp"))
+    {
+        print("[TEST-AS9] FAIL: Existing created group was destroyed by failed re-registration!");
+        return;
+    }
+
+    if (!SUI_IsGroupVisible(0, "as9_grp"))
+    {
+        print("[TEST-AS9] FAIL: Existing created group lost visibility!");
+        return;
+    }
+
+    if (SUI_GetActiveTextDrawCount(0) != 5)
+    {
+        printf("[TEST-AS9] FAIL: Active count corrupted: %d (5 expected)", SUI_GetActiveTextDrawCount(0));
+        return;
+    }
+
+    if (g_as9_destroy_called != 0)
+    {
+        printf("[TEST-AS9] FAIL: Destroy callback called %d times during failed re-registration!", g_as9_destroy_called);
+        return;
+    }
+
+    print("[TEST-AS9] Step 4: Normal destruction of live group...");
+    // 4. Normal destruction works cleanly
+    if (!SUI_DestroyGroup(0, "as9_grp"))
+    {
+        print("[TEST-AS9] FAIL: Final clean destroy failed");
+        return;
+    }
+
+    if (g_as9_destroy_called != 1)
+    {
+        printf("[TEST-AS9] FAIL: Destroy callback count is %d (1 expected after clean destroy)", g_as9_destroy_called);
+        return;
+    }
+
+    if (SUI_GetActiveTextDrawCount(0) != 0)
+    {
+        print("[TEST-AS9] FAIL: Active count not 0 after clean destroy");
+        return;
+    }
+
+    SUI_CleanupPlayer(0);
+    g_test_as9_pass = 1;
+    print("[TEST-AS9] PASS: Re-registering created group fails safely without destroying live UI.");
 }
 
 PrintSummaryAndExit()
 {
     new totalPass = g_test_as1_pass + g_test_as2_pass + g_test_as3_pass + g_test_as4_pass +
-                    g_test_as5_pass + g_test_as6_pass + g_test_as7_pass + g_test_as8_pass;
+                    g_test_as5_pass + g_test_as6_pass + g_test_as7_pass + g_test_as8_pass +
+                    g_test_as9_pass;
 
     print("\n================================================================");
-    print("    SUI PHASE 12.1: STOCK HELPER RUNTIME TEST RESULTS (AS1-AS8)   ");
+    print("    SUI PHASE 12.2: STOCK HELPER RUNTIME TEST RESULTS (AS1-AS9)   ");
     print("================================================================");
     printf("AS1 (Valid SUI_RegisterGroup Setup):              %s", g_test_as1_pass ? ("PASS") : ("FAIL"));
     printf("AS2 (Invalid Priority Rejection):                 %s", g_test_as2_pass ? ("PASS") : ("FAIL"));
@@ -343,10 +450,11 @@ PrintSummaryAndExit()
     printf("AS5 (Invalid Player ID Rejection):                %s", g_test_as5_pass ? ("PASS") : ("FAIL"));
     printf("AS6 (Re-Registration / Config Update):            %s", g_test_as6_pass ? ("PASS") : ("FAIL"));
     printf("AS7 (Usable Configuration Lifecycle):             %s", g_test_as7_pass ? ("PASS") : ("FAIL"));
-    printf("AS8 (No Partial State / Safe Re-registration):    %s", g_test_as8_pass ? ("PASS") : ("FAIL"));
+    printf("AS8 (Prevalidation Failure Cleanliness):          %s", g_test_as8_pass ? ("PASS") : ("FAIL"));
+    printf("AS9 (Existing Created Group Re-reg Safety):       %s", g_test_as9_pass ? ("PASS") : ("FAIL"));
     print("================================================================");
-    printf("TOTAL: %d / 8 PASSED", totalPass);
-    if (totalPass == 8)
+    printf("TOTAL: %d / 9 PASSED", totalPass);
+    if (totalPass == 9)
     {
         print("OVERALL RESULT: ALL STOCK HELPER CONTRACT TESTS PASSED!");
     }
@@ -361,7 +469,7 @@ PrintSummaryAndExit()
 
 public OnGameModeInit()
 {
-    print("\n[TEST-START] Starting SUI Phase 12.1 Stock Helper Contract Suite (AS1-AS8)...");
+    print("\n[TEST-START] Starting SUI Phase 12.2 Stock Helper Contract Suite (AS1-AS9)...");
     SUI_SetDebug(true);
 
     Test_AS1_ValidRegistration();
@@ -372,6 +480,7 @@ public OnGameModeInit()
     Test_AS6_ReRegistration();
     Test_AS7_UsableConfig();
     Test_AS8_NoPartialState();
+    Test_AS9_ExistingGroupSafety();
 
     PrintSummaryAndExit();
     return 1;

@@ -18,9 +18,9 @@ This document defines the authoritative configuration, script dependencies, fixt
 | **eviction_preflight** | `eviction_preflight` | `eviction_preflight_filterscript` | *(none)* | 15 | 15 / 15 PASS | Yes |
 | **show_failure_lifecycle** | `show_failure_lifecycle` | *(none)* | *(none)* | 10 | 10 / 10 PASS | Yes |
 | **player_id_validation** | `player_id_validation` | *(none)* | *(none)* | 14 | 14 / 14 PASS | Yes |
-| **api_contract_runtime** | `api_contract_runtime` | *(none)* | *(none)* | 8 | 8 / 8 PASS | Yes |
+| **api_contract_runtime** | `api_contract_runtime` | *(none)* | *(none)* | 9 | 9 / 9 PASS | Yes |
 
-**Total Permanent Suite Pass Rate:** **149 / 149 PASS (100%)**
+**Total Permanent Suite Pass Rate:** **150 / 150 PASS (100%)**
 
 ---
 
@@ -28,7 +28,7 @@ This document defines the authoritative configuration, script dependencies, fixt
 
 ### 1. reentrancy_regression
 - **Target Issue:** SUI-001 (Re-entrancy recursion and state corruption)
-- **Gamemode:** `tests/reentrancy_regression/reentrancy_regression.pwn`
+- **Gamemode:** `tests/reentrancy_regression.pwn`
 - **Filterscripts:** None
 - **Key Invariants:** `isExecutingCallback` prevents nested lifecycle mutation; player context snapshots prevent iterator invalidation.
 - **Assertions:** R1–R10 (10 tests)
@@ -128,16 +128,17 @@ This document defines the authoritative configuration, script dependencies, fixt
 - **Exit Behavior:** Server automatically terminates via RCON upon completing PV14.
 
 ### 11. api_contract_runtime
-- **Target Issue:** SUI-010 (Public Pawn API Synchronization, Stock Helper Atomicity, and Return Contract Truthfulness)
+- **Target Issue:** SUI-010 (Public Pawn API Synchronization, Stock Helper Return Contract Truthfulness, and Failure Safety)
 - **Gamemode:** `tests/api_contract/api_contract_runtime.pwn`
 - **Filterscripts:** None
 - **Key Invariants:**
-  1. Complete Setup Atomicity: `SUI_RegisterGroup` returns `1` only if registration and all four configuration setters (`SetGroupSize`, `SetIdleTimeout`, `SetGroupPriority`, `SetGroupEvictable`) succeed.
-  2. Prevalidation Defense: Out-of-bounds parameters (negative size, negative timeout, priority outside LOW..CRITICAL) are prevalidated and rejected (`return 0`) before allocating state.
-  3. Zero Partial State: A rejected registration attempt leaves zero blocking state in `PlayerContext`; subsequent registration under the same group name succeeds with full lifecycle functionality.
-  4. Complete Lifecycle Usability: Groups registered via the helper are fully functional through creation, show, touch, hide, state query, and destruction.
-- **Assertions:** AS1–AS8 (8 tests)
-- **Exit Behavior:** Server automatically terminates via RCON upon completing AS8.
+  1. Complete Setup Verification: `SUI_RegisterGroup` returns `1` only if registration and all four configuration setters (`SetGroupSize`, `SetIdleTimeout`, `SetGroupPriority`, `SetGroupEvictable`) succeed.
+  2. Prevalidation Defense: Out-of-bounds parameters (negative size, negative timeout, priority outside LOW..CRITICAL) are prevalidated and rejected (`return 0`) before registration native is invoked.
+  3. Zero Inadvertent Destruction: If a setter fails after registration (e.g. attempting to re-register an already created group), `SUI_RegisterGroup` returns `0` without calling `SUI_DestroyGroup`, preserving active UI groups and textdraw accounting.
+  4. Clean Subsequent Registration: A prevalidation rejection leaves zero state in `PlayerContext`; subsequent registration under the same group name succeeds with full lifecycle functionality.
+  5. Complete Lifecycle Usability: Groups registered via the helper are fully functional through creation, show, touch, hide, state query, and destruction.
+- **Assertions:** AS1–AS9 (9 tests)
+- **Exit Behavior:** Server automatically terminates via RCON upon completing AS9.
 
 ---
 

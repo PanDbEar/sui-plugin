@@ -263,3 +263,4 @@ stock SUI_RegisterGroup(
 ```
 Convenience function that combines registration, size declaration, idle timeout, priority, and evictability configuration into a single call.
 - **Returns**: `1` on complete setup success, `0` on any prevalidation failure (e.g. negative size, negative timeout, out-of-bounds priority), registration error (invalid player ID, group already exists under another owner, or re-registration during active callback), or setter failure.
+- **Safety**: If prevalidation fails, zero state is created. If a downstream setter fails (e.g. attempting to re-register an already-created group whose size is fixed), `0` is returned without calling `SUI_DestroyGroup`, ensuring active UI groups and textdraw accounting are never inadvertently destroyed.

@@ -1,4 +1,4 @@
-# SUI Phase 12: Public API Contract Test Plan (AP1–AP8)
+# SUI Phase 12.2: Public API Contract Test Plan (AP1–AP8, AS1–AS9)
 
 ## Objective
 Verify that all public SUI declarations in `pawn/sui.inc`, runtime AMX native registrations in `src/main.cpp`, C++ dispatchers in `src/Natives.hpp` and `src/Natives.cpp`, core data structures in `src/Core.hpp` and `src/Core.cpp`, documentation in `docs/API_REFERENCE.md` and `README.md`, and shipped code in `examples/` are 100% synchronized, truthful, and free of tag mismatches, phantom declarations, or broken example scripts.
@@ -16,11 +16,11 @@ Verify that all public SUI declarations in `pawn/sui.inc`, runtime AMX native re
 | **AP5** | Handler Declarations & Definitions | Every registered C++ native handler is declared in `src/Natives.hpp` and defined in `src/Natives.cpp`. | Automated Static Checker (`check_api_surface.py`) | 19 / 19 match |
 | **AP6** | Documentation Synchronization | All 19 registered natives are documented in `docs/API_REFERENCE.md` with accurate signatures and parameters. | Automated Static Checker (`check_api_surface.py`) | 19 / 19 match |
 | **AP7** | Priority Constants & Defaults | Priority constants (`LOW=0`, `NORMAL=1`, `HIGH=2`, `CRITICAL=3`) and capacity defaults (`size=1`, `timeout=30000`, `max=256`, `threshold=230`) match between include, C++ headers, and docs. | Automated Static Checker & Source Audit | 100% synchronized |
-| **AP8** | Example & Fixture Compilation | Shipped example (`examples/factory_login_example.pwn`) and all 16 permanent test fixture `.pwn` scripts compile cleanly with Pawn compiler 3.2.3664. | Automated Pawn Compiler (`pawncc`) | 0 errors, 0 warnings |
+| **AP8** | Example & Fixture Compilation | Shipped example (`examples/factory_login_example.pwn`) and all 17 test fixture `.pwn` scripts (18 total `.pwn` scripts) compile cleanly with Pawn compiler 3.2.3664. | Automated Pawn Compiler (`pawncc`) | 0 errors, 0 warnings |
 
 ---
 
-## Runtime Stock Helper Verification Scenarios (AS1–AS8)
+## Runtime Stock Helper Verification Scenarios (AS1–AS9)
 
 Suite script: `tests/api_contract/api_contract_runtime.pwn`
 
@@ -33,7 +33,8 @@ Suite script: `tests/api_contract/api_contract_runtime.pwn`
 | **AS5** | Invalid Player ID | Out-of-bounds player IDs (-1, 1000, INVALID_PLAYER_ID) rejected at native boundary; no phantom PlayerContext. | PASS (return 0) |
 | **AS6** | Config Update | Re-registering existing uncreated group with updated size/priority/timeout updates config cleanly. | PASS (return 1) |
 | **AS7** | Usable Lifecycle | Valid registered group operates cleanly through full lifecycle: show, touch, hide, state queries. | PASS (return 1) |
-| **AS8** | Zero Partial State | After failed registration attempt, registering clean group under same name succeeds with 100% functionality. | PASS (return 1) |
+| **AS8** | Prevalidation Cleanliness | Prevalidation rejects invalid priority (99) before registration native is invoked; leaves zero group state. | PASS (return 1) |
+| **AS9** | Existing Group Safety | Calling `SUI_RegisterGroup` on an already-created group fails safely (size change rejected) without calling `SUI_DestroyGroup`; live group, visibility, and active textdraw count remain intact. | PASS (return 1) |
 
 ---
 
