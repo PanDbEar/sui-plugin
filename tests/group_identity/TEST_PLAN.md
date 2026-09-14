@@ -124,4 +124,33 @@ The test suite consists of two scripts running on a live SA-MP 0.3.7 server:
 - **Mechanism**: After player reset (`activeTextDrawCount == 0`), a new group `"rag3_grp"` (size 7) is registered and shown.
 - **Verification**: Registration returns 1, show increments active count to 7, and destruction cleanly drops active count to 0.
 
+---
+
+## 7. Extended Cross-AMX Genuine ABA Scenario (ID-ABA-CROSS)
+
+### ID-ABA-CROSS: Cross-AMX Genuine ABA Replacement during cbCreate
+- **Mechanism**: Gamemode registers `"aba_cross_grp"` and calls `SUI_ShowGroup`. In `OnGmAbaCross_Create`, Gamemode calls `SUI_ResetPlayer(playerid)` (returns 1, pruning the uncreated group per SUI-005 T10) and remotely invokes Filterscript's `FS_RegisterAbaCross(playerid)`, which successfully registers `"aba_cross_grp"` under Filterscript ownership with a new `instanceId`.
+- **Verification**: Gamemode's outer `ShowGroup` resumes in C++, detects that the active group has a different `instanceId` and different owning AMX, and safely aborts without dispatching `OnGmAbaCross_Show`. Filterscript's group remains completely uncreated and uncorrupted. Subsequently, calling `FS_ShowAbaCross` creates and shows the Filterscript group with capacity 8, proving cross-AMX ABA isolation.
+
+---
+
+## 8. SUI-005 Diagnostic Reset & Failure Preservation Specifications (X1–X4)
+
+### X1: Diagnostic ResetPlayer during cbCreate
+- **Mechanism**: Group is uncreated (`isCreated == false`). In `cbCreate`, `SUI_ResetPlayer` is called.
+- **Verification**: Uncreated group is pruned directly per SUI-005 T10; `ResetPlayer` returns 1. Same-name re-registration in callback returns 1. Monotonic `instanceId` increments. Outer `ShowGroup` aborts on `instanceId` mismatch. Replacement group is not shown by outer caller.
+
+### X2: Diagnostic ResetPlayer during cbHide
+- **Mechanism**: Group is visible (`isCreated == true`, `isVisible == true`). In `cbHide`, `SUI_ResetPlayer` is called.
+- **Verification**: Group is actively executing callback (`isExecutingCallback == true`), so `ResetPlayer` refuses re-entrant destruction and returns 0. In-callback re-registration is rejected (returns 0) by Invariant 2. Original group is preserved, hide completes, and legitimate post-destruction re-registration succeeds.
+
+### X3: Diagnostic ResetPlayer during cbDestroy
+- **Mechanism**: Group is visible or hidden. In `cbDestroy`, `SUI_ResetPlayer` is called.
+- **Verification**: `ResetPlayer` returns 0; in-callback re-registration returns 0. Outer `DestroyGroup` authoritatively completes destruction and decrements capacity. Legitimate post-destruction re-registration succeeds.
+
+### X4: Diagnostic ResetPlayer during ProcessTick Idle cbDestroy
+- **Mechanism**: Group idle timeout expires in `ProcessTick`. In idle `cbDestroy`, `SUI_ResetPlayer` is called.
+- **Verification**: `ResetPlayer` returns 0; in-callback re-registration returns 0. Outer idle destroy authoritatively completes destruction and decrements capacity. Legitimate post-destruction re-registration succeeds.
+
+
 

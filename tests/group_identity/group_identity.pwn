@@ -22,6 +22,11 @@ new g_o2_pass = 0;
 new g_rag1_pass = 0;
 new g_rag2_pass = 0;
 new g_rag3_pass = 0;
+new g_x1_pass = 0;
+new g_x2_pass = 0;
+new g_x3_pass = 0;
+new g_x4_pass = 0;
+new g_id_aba_cross_pass = 0;
 
 // Call counters for ID1
 new g_id1_old_create_calls = 0;
@@ -29,18 +34,24 @@ new g_id1_old_show_calls = 0;
 new g_id1_new_create_calls = 0;
 new g_id1_new_show_calls = 0;
 
-// Call counters for ID2
+// Call counters and results for ID2
 new g_id2_old_hide_calls = 0;
+new g_id2_reset_res = -1;
+new g_id2_rereg_res = -1;
 new g_id2_new_create_calls = 0;
 new g_id2_new_show_calls = 0;
 
-// Call counters for ID3
+// Call counters and results for ID3
 new g_id3_old_destroy_calls = 0;
+new g_id3_reset_res = -1;
+new g_id3_rereg_res = -1;
 new g_id3_new_create_calls = 0;
 new g_id3_new_show_calls = 0;
 
-// Call counters for ID4
+// Call counters and results for ID4
 new g_id4_old_destroy_calls = 0;
+new g_id4_reset_res = -1;
+new g_id4_rereg_res = -1;
 new g_id4_new_create_calls = 0;
 new g_id4_new_show_calls = 0;
 
@@ -53,6 +64,7 @@ new g_id6_c_calls = 0;
 new g_id6_s_calls = 0;
 
 // Call counters for ID7
+new g_id7_gm_try_reg_res = -1;
 new g_id7_gm_create_calls = 0;
 new g_id7_gm_show_calls = 0;
 
@@ -65,6 +77,31 @@ new g_id9_c_show = 0;
 // Call counters for ID10
 new g_id10_create_calls = 0;
 new g_id10_destroy_calls = 0;
+
+// Call counters and results for X1 - X4
+new g_x1_create_calls = 0;
+new g_x1_reset_res = -1;
+new g_x1_rereg_res = -1;
+new g_x1_new_create_calls = 0;
+new g_x1_new_show_calls = 0;
+
+new g_x2_hide_calls = 0;
+new g_x2_reset_res = -1;
+new g_x2_rereg_res = -1;
+
+new g_x3_destroy_calls = 0;
+new g_x3_reset_res = -1;
+new g_x3_rereg_res = -1;
+
+new g_x4_destroy_calls = 0;
+new g_x4_reset_res = -1;
+new g_x4_rereg_res = -1;
+
+// Call counters and results for ID-ABA-CROSS
+new g_gm_aba_create_calls = 0;
+new g_gm_aba_show_calls = 0;
+new g_gm_aba_reset_res = -1;
+new g_fs_aba_reg_res = -1;
 
 main()
 {
@@ -123,10 +160,10 @@ forward OnID2_OldHide(playerid);
 public OnID2_OldHide(playerid)
 {
     g_id2_old_hide_calls++;
-    // Re-entrant reset and same-name replacement during cbHide
-    SUI_ResetPlayer(playerid);
-    SUI_CreatePlayerFactoryGroup(playerid, "id2", "OnID2_NewCreate", "OnID2_NewDestroy", "OnID2_NewShow", "OnID2_NewHide");
-    SUI_SetGroupSize(playerid, "id2", 10);
+    // Re-entrant reset during cbHide must fail (returns 0) and preserve group
+    g_id2_reset_res = SUI_ResetPlayer(playerid);
+    // In-callback re-registration must be rejected by Invariant 2 (returns 0)
+    g_id2_rereg_res = SUI_CreatePlayerFactoryGroup(playerid, "id2", "OnID2_NewCreate", "OnID2_NewDestroy", "OnID2_NewShow", "OnID2_NewHide");
     return 1;
 }
 
@@ -152,10 +189,10 @@ forward OnID3_OldDestroy(playerid);
 public OnID3_OldDestroy(playerid)
 {
     g_id3_old_destroy_calls++;
-    // Re-entrant reset and same-name replacement during cbDestroy
-    SUI_ResetPlayer(playerid);
-    SUI_CreatePlayerFactoryGroup(playerid, "id3", "OnID3_NewCreate", "OnID3_NewDestroy", "OnID3_NewShow", "OnID3_NewHide");
-    SUI_SetGroupSize(playerid, "id3", 10);
+    // Re-entrant reset during cbDestroy must return 0
+    g_id3_reset_res = SUI_ResetPlayer(playerid);
+    // In-callback re-registration must return 0
+    g_id3_rereg_res = SUI_CreatePlayerFactoryGroup(playerid, "id3", "OnID3_NewCreate", "OnID3_NewDestroy", "OnID3_NewShow", "OnID3_NewHide");
     return 1;
 }
 
@@ -181,10 +218,10 @@ forward OnID4_OldDestroy(playerid);
 public OnID4_OldDestroy(playerid)
 {
     g_id4_old_destroy_calls++;
-    // Replace during idle destroy
-    SUI_ResetPlayer(playerid);
-    SUI_CreatePlayerFactoryGroup(playerid, "id4", "OnID4_NewCreate", "OnID4_NewDestroy", "OnID4_NewShow", "OnID4_NewHide");
-    SUI_SetGroupSize(playerid, "id4", 10);
+    // In idle destroy callback, reset rejected
+    g_id4_reset_res = SUI_ResetPlayer(playerid);
+    // In-callback re-reg rejected
+    g_id4_rereg_res = SUI_CreatePlayerFactoryGroup(playerid, "id4", "OnID4_NewCreate", "OnID4_NewDestroy", "OnID4_NewShow", "OnID4_NewHide");
     return 1;
 }
 
@@ -252,13 +289,13 @@ public OnID6_H(playerid) { return 1; }
 // ----------------------------------------------------------------------------
 // ID7 Callbacks (Cross-AMX)
 // ----------------------------------------------------------------------------
-forward GM_RegisterID7(playerid);
-public GM_RegisterID7(playerid)
+forward GM_TryRegisterID7(playerid);
+public GM_TryRegisterID7(playerid)
 {
-    // Gamemode registers same group name after FS resets player in its destroy callback
-    SUI_CreatePlayerFactoryGroup(playerid, "id7_fs", "OnGmID7_Create", "OnGmID7_Destroy", "OnGmID7_Show", "OnGmID7_Hide");
-    SUI_SetGroupSize(playerid, "id7_fs", 8);
-    return 1;
+    // Gamemode attempts to register same group name during FS destroy callback
+    // Must be rejected by Anti-Hijack Invariant 1 (returns 0)
+    g_id7_gm_try_reg_res = SUI_CreatePlayerFactoryGroup(playerid, "id7_fs", "OnGmID7_Create", "OnGmID7_Destroy", "OnGmID7_Show", "OnGmID7_Hide");
+    return g_id7_gm_try_reg_res;
 }
 
 forward OnGmID7_Create(playerid);
@@ -418,6 +455,7 @@ new g_idevict_new_create_calls = 0;
 new g_idevict_new_show_calls = 0;
 new g_idevict_req_create_calls = 0;
 new g_idevict_inplace_res = -1;
+new g_idevict_reset_res = -1;
 new g_idevict_repl_res = -1;
 
 forward OnIDEvict_CandCreate(playerid);
@@ -433,10 +471,11 @@ public OnIDEvict_CandDestroy(playerid)
     // 1. In-place re-registration WITHOUT ResetPlayer must be REJECTED (returns 0)
     g_idevict_inplace_res = SUI_CreatePlayerFactoryGroup(playerid, "evict_cand_grp", "OnIDEvict_NewCreate", "OnIDEvict_NewDestroy", "OnIDEvict_NewShow", "OnIDEvict_NewHide");
 
-    // 2. Legitimate replacement after ResetPlayer
-    SUI_ResetPlayer(playerid);
+    // 2. Re-entrant ResetPlayer during eviction destroy callback returns 0 under SUI-005
+    g_idevict_reset_res = SUI_ResetPlayer(playerid);
+
+    // 3. In-callback re-registration after ResetPlayer is STILL REJECTED by Invariant 2 (returns 0)
     g_idevict_repl_res = SUI_CreatePlayerFactoryGroup(playerid, "evict_cand_grp", "OnIDEvict_NewCreate", "OnIDEvict_NewDestroy", "OnIDEvict_NewShow", "OnIDEvict_NewHide");
-    SUI_SetGroupSize(playerid, "evict_cand_grp", 15);
     return 1;
 }
 
@@ -521,6 +560,90 @@ forward OnRAG2_Show(playerid);
 public OnRAG2_Show(playerid) { return 1; }
 forward OnRAG2_Hide(playerid);
 public OnRAG2_Hide(playerid) { return 1; }
+// ----------------------------------------------------------------------------
+// X1 Callbacks (ResetPlayer During cbCreate)
+// ----------------------------------------------------------------------------
+forward OnX1_OldCreate(playerid);
+public OnX1_OldCreate(playerid)
+{
+    g_x1_create_calls++;
+    // Uncreated group: ResetPlayer removes it directly and returns 1
+    g_x1_reset_res = SUI_ResetPlayer(playerid);
+    // Same-name replacement registration succeeds because context/group was erased
+    g_x1_rereg_res = SUI_CreatePlayerFactoryGroup(playerid, "x1_grp", "OnX1_NewCreate", "OnX1_NewDestroy", "OnX1_NewShow", "OnX1_NewHide");
+    SUI_SetGroupSize(playerid, "x1_grp", 10);
+    return 1;
+}
+forward OnX1_OldDestroy(playerid); public OnX1_OldDestroy(playerid) { return 1; }
+forward OnX1_OldShow(playerid); public OnX1_OldShow(playerid) { return 1; }
+forward OnX1_OldHide(playerid); public OnX1_OldHide(playerid) { return 1; }
+
+forward OnX1_NewCreate(playerid); public OnX1_NewCreate(playerid) { g_x1_new_create_calls++; return 1; }
+forward OnX1_NewDestroy(playerid); public OnX1_NewDestroy(playerid) { return 1; }
+forward OnX1_NewShow(playerid); public OnX1_NewShow(playerid) { g_x1_new_show_calls++; return 1; }
+forward OnX1_NewHide(playerid); public OnX1_NewHide(playerid) { return 1; }
+
+// ----------------------------------------------------------------------------
+// X2 Callbacks (ResetPlayer During cbHide)
+// ----------------------------------------------------------------------------
+forward OnX2_Hide(playerid);
+public OnX2_Hide(playerid)
+{
+    g_x2_hide_calls++;
+    g_x2_reset_res = SUI_ResetPlayer(playerid);
+    g_x2_rereg_res = SUI_CreatePlayerFactoryGroup(playerid, "x2_grp", "OnX2_Create", "OnX2_Destroy", "OnX2_Show", "OnX2_Hide");
+    return 1;
+}
+forward OnX2_Create(playerid); public OnX2_Create(playerid) { return 1; }
+forward OnX2_Destroy(playerid); public OnX2_Destroy(playerid) { return 1; }
+forward OnX2_Show(playerid); public OnX2_Show(playerid) { return 1; }
+
+// ----------------------------------------------------------------------------
+// X3 Callbacks (ResetPlayer During cbDestroy)
+// ----------------------------------------------------------------------------
+forward OnX3_Destroy(playerid);
+public OnX3_Destroy(playerid)
+{
+    g_x3_destroy_calls++;
+    g_x3_reset_res = SUI_ResetPlayer(playerid);
+    g_x3_rereg_res = SUI_CreatePlayerFactoryGroup(playerid, "x3_grp", "OnX3_Create", "OnX3_Destroy", "OnX3_Show", "OnX3_Hide");
+    return 1;
+}
+forward OnX3_Create(playerid); public OnX3_Create(playerid) { return 1; }
+forward OnX3_Show(playerid); public OnX3_Show(playerid) { return 1; }
+forward OnX3_Hide(playerid); public OnX3_Hide(playerid) { return 1; }
+
+// ----------------------------------------------------------------------------
+// X4 Callbacks (ResetPlayer During idle cbDestroy)
+// ----------------------------------------------------------------------------
+forward OnX4_Destroy(playerid);
+public OnX4_Destroy(playerid)
+{
+    g_x4_destroy_calls++;
+    g_x4_reset_res = SUI_ResetPlayer(playerid);
+    g_x4_rereg_res = SUI_CreatePlayerFactoryGroup(playerid, "x4_grp", "OnX4_Create", "OnX4_Destroy", "OnX4_Show", "OnX4_Hide");
+    return 1;
+}
+forward OnX4_Create(playerid); public OnX4_Create(playerid) { return 1; }
+forward OnX4_Show(playerid); public OnX4_Show(playerid) { return 1; }
+forward OnX4_Hide(playerid); public OnX4_Hide(playerid) { return 1; }
+
+// ----------------------------------------------------------------------------
+// ID-ABA-CROSS Callbacks (Cross-AMX Genuine ABA Replacement during cbCreate)
+// ----------------------------------------------------------------------------
+forward OnGmAbaCross_Create(playerid);
+public OnGmAbaCross_Create(playerid)
+{
+    g_gm_aba_create_calls++;
+    // 1. ResetPlayer removes Gamemode uncreated group cleanly (returns 1)
+    g_gm_aba_reset_res = SUI_ResetPlayer(playerid);
+    // 2. Filterscript immediately registers same name (returns 1)
+    g_fs_aba_reg_res = CallRemoteFunction("FS_RegisterAbaCross", "d", playerid);
+    return 1;
+}
+forward OnGmAbaCross_Destroy(playerid); public OnGmAbaCross_Destroy(playerid) { return 1; }
+forward OnGmAbaCross_Show(playerid); public OnGmAbaCross_Show(playerid) { g_gm_aba_show_calls++; return 1; }
+forward OnGmAbaCross_Hide(playerid); public OnGmAbaCross_Hide(playerid) { return 1; }
 
 
 // ----------------------------------------------------------------------------
@@ -577,64 +700,72 @@ public RunIdentityTests()
     }
 
     // -------------------------------------------------------------
-    // ID2: Hide Callback Same-Name Replacement
+    // ID2: Hide Callback Same-Name Replacement (Reconciled)
     // -------------------------------------------------------------
-    print("\n[TEST-ID2] Testing Hide Callback Same-Name Replacement...");
+    print("\n[TEST-ID2] Testing Hide Callback Reset Rejection / Identity Preservation...");
     SUI_ResetPlayer(0);
+    g_id2_old_hide_calls = 0;
+    g_id2_reset_res = -1;
+    g_id2_rereg_res = -1;
+    g_id2_new_create_calls = 0;
+    g_id2_new_show_calls = 0;
+
     SUI_CreatePlayerFactoryGroup(0, "id2", "OnID2_OldCreate", "OnID2_OldDestroy", "OnID2_OldShow", "OnID2_OldHide");
     SUI_SetGroupSize(0, "id2", 10);
     SUI_ShowGroup(0, "id2"); // created and visible
 
-    SUI_HideGroup(0, "id2"); // triggers OnID2_OldHide -> reset + re-register replacement
+    SUI_HideGroup(0, "id2"); // triggers OnID2_OldHide -> reset rejected (0), re-reg rejected (0)
 
     new id2_created_mid = SUI_IsGroupCreated(0, "id2");
     new id2_visible_mid = SUI_IsGroupVisible(0, "id2");
     new id2_act_mid = SUI_GetActiveTextDrawCount(0);
 
-    // Show replacement
-    SUI_ShowGroup(0, "id2");
-    new id2_created_final = SUI_IsGroupCreated(0, "id2");
-    new id2_visible_final = SUI_IsGroupVisible(0, "id2");
-    new id2_act_final = SUI_GetActiveTextDrawCount(0);
-
     SUI_DestroyGroup(0, "id2");
+    new id2_act_final = SUI_GetActiveTextDrawCount(0);
     SUI_ResetPlayer(0);
 
     if (g_id2_old_hide_calls == 1 &&
-        id2_created_mid == 0 &&
+        g_id2_reset_res == 0 &&
+        g_id2_rereg_res == 0 &&
+        g_id2_new_create_calls == 0 &&
+        id2_created_mid == 1 &&
         id2_visible_mid == 0 &&
-        id2_act_mid == 0 &&
-        g_id2_new_create_calls == 1 &&
-        g_id2_new_show_calls == 1 &&
-        id2_created_final == 1 &&
-        id2_visible_final == 1 &&
-        id2_act_final == 10)
+        id2_act_mid == 10 &&
+        id2_act_final == 0)
     {
         g_id2_pass = 1;
-        print("[TEST-ID2] PASS: Outer HideGroup did not mutate replacement; replacement operates cleanly.");
+        print("[TEST-ID2] PASS: Hide callback reset safely rejected; original group identity preserved.");
     }
     else
     {
-        printf("[TEST-ID2] FAIL: hide_c=%d mid_c=%d mid_v=%d mid_act=%d new_c=%d new_s=%d fin_c=%d fin_v=%d fin_act=%d",
-            g_id2_old_hide_calls, id2_created_mid, id2_visible_mid, id2_act_mid,
-            g_id2_new_create_calls, g_id2_new_show_calls, id2_created_final, id2_visible_final, id2_act_final);
+        printf("[TEST-ID2] FAIL: hide_c=%d reset_r=%d rereg_r=%d mid_c=%d mid_v=%d mid_act=%d fin_act=%d",
+            g_id2_old_hide_calls, g_id2_reset_res, g_id2_rereg_res,
+            id2_created_mid, id2_visible_mid, id2_act_mid, id2_act_final);
     }
 
     // -------------------------------------------------------------
-    // ID3: Destroy Callback Same-Name Replacement
+    // ID3: Destroy Callback Same-Name Replacement (Reconciled)
     // -------------------------------------------------------------
-    print("\n[TEST-ID3] Testing Destroy Callback Same-Name Replacement...");
+    print("\n[TEST-ID3] Testing Destroy Callback Reset Rejection / Authoritative Outer Destruction...");
     SUI_ResetPlayer(0);
+    g_id3_old_destroy_calls = 0;
+    g_id3_reset_res = -1;
+    g_id3_rereg_res = -1;
+    g_id3_new_create_calls = 0;
+    g_id3_new_show_calls = 0;
+
     SUI_CreatePlayerFactoryGroup(0, "id3", "OnID3_OldCreate", "OnID3_OldDestroy", "OnID3_OldShow", "OnID3_OldHide");
     SUI_SetGroupSize(0, "id3", 10);
     SUI_ShowGroup(0, "id3");
 
-    SUI_DestroyGroup(0, "id3"); // triggers OnID3_OldDestroy -> reset + re-register replacement
+    SUI_DestroyGroup(0, "id3"); // triggers OnID3_OldDestroy -> reset rejected (0), rereg rejected (0), outer destroy completes
 
     new id3_created_mid = SUI_IsGroupCreated(0, "id3");
     new id3_act_mid = SUI_GetActiveTextDrawCount(0);
 
-    // Show replacement
+    // Outside callback, name is now genuinely free: register and show replacement
+    new id3_post_reg = SUI_CreatePlayerFactoryGroup(0, "id3", "OnID3_NewCreate", "OnID3_NewDestroy", "OnID3_NewShow", "OnID3_NewHide");
+    SUI_SetGroupSize(0, "id3", 10);
     SUI_ShowGroup(0, "id3");
     new id3_created_final = SUI_IsGroupCreated(0, "id3");
     new id3_visible_final = SUI_IsGroupVisible(0, "id3");
@@ -644,8 +775,11 @@ public RunIdentityTests()
     SUI_ResetPlayer(0);
 
     if (g_id3_old_destroy_calls == 1 &&
+        g_id3_reset_res == 0 &&
+        g_id3_rereg_res == 0 &&
         id3_created_mid == 0 &&
         id3_act_mid == 0 &&
+        id3_post_reg == 1 &&
         g_id3_new_create_calls == 1 &&
         g_id3_new_show_calls == 1 &&
         id3_created_final == 1 &&
@@ -653,13 +787,13 @@ public RunIdentityTests()
         id3_act_final == 10)
     {
         g_id3_pass = 1;
-        print("[TEST-ID3] PASS: Outer DestroyGroup did not destroy replacement or corrupt capacity.");
+        print("[TEST-ID3] PASS: In-callback reset rejected; outer destroy authoritative; post-destroy replacement succeeds.");
     }
     else
     {
-        printf("[TEST-ID3] FAIL: dest_c=%d mid_c=%d mid_act=%d new_c=%d new_s=%d fin_c=%d fin_v=%d fin_act=%d",
-            g_id3_old_destroy_calls, id3_created_mid, id3_act_mid,
-            g_id3_new_create_calls, g_id3_new_show_calls, id3_created_final, id3_visible_final, id3_act_final);
+        printf("[TEST-ID3] FAIL: dest_c=%d reset_r=%d rereg_r=%d mid_c=%d mid_act=%d post_reg=%d new_c=%d new_s=%d fin_c=%d fin_v=%d fin_act=%d",
+            g_id3_old_destroy_calls, g_id3_reset_res, g_id3_rereg_res, id3_created_mid, id3_act_mid,
+            id3_post_reg, g_id3_new_create_calls, g_id3_new_show_calls, id3_created_final, id3_visible_final, id3_act_final);
     }
 
     // -------------------------------------------------------------
@@ -742,23 +876,29 @@ public RunIdentityTests()
     }
 
     // -------------------------------------------------------------
-    // ID7: Cross-AMX Replacement
+    // ID7: Cross-AMX Replacement (Reconciled)
     // -------------------------------------------------------------
     print("\n[TEST-ID7] Testing Cross-AMX Replacement Isolation...");
     SUI_ResetPlayer(0);
     g_id7_gm_create_calls = 0;
     g_id7_gm_show_calls = 0;
+    g_id7_gm_try_reg_res = -1;
 
     // Filterscript registers id7_fs
     new fs_setup_ok = CallRemoteFunction("FS_SetupID7", "d", 0);
     SUI_ShowGroup(0, "id7_fs"); // FS shows group (active = 5)
     new id7_fs_act = SUI_GetActiveTextDrawCount(0);
 
-    // Destroy id7_fs -> triggers FS_OnID7_Destroy -> calls GM_RegisterID7 -> Gamemode registers id7_fs
+    // Destroy id7_fs -> triggers FS_OnID7_Destroy -> reset returns 0, GM_TryRegisterID7 returns 0
     SUI_DestroyGroup(0, "id7_fs");
     new fs_dest_calls = CallRemoteFunction("FS_GetDestroyCalls", "");
+    new fs_reset_res = CallRemoteFunction("FS_GetID7ResetResult", "");
+    new id7_mid_act = SUI_GetActiveTextDrawCount(0);
 
-    // Gamemode now shows its own generation of id7_fs
+    // Now that old FS group is genuinely destroyed, reset player to clear old AMX ownership tracking (O2 pattern)
+    SUI_ResetPlayer(0);
+    new gm_post_reg = SUI_CreatePlayerFactoryGroup(0, "id7_fs", "OnGmID7_Create", "OnGmID7_Destroy", "OnGmID7_Show", "OnGmID7_Hide");
+    SUI_SetGroupSize(0, "id7_fs", 8);
     SUI_ShowGroup(0, "id7_fs");
     new id7_gm_created = SUI_IsGroupCreated(0, "id7_fs");
     new id7_gm_visible = SUI_IsGroupVisible(0, "id7_fs");
@@ -770,6 +910,10 @@ public RunIdentityTests()
     if (fs_setup_ok == 1 &&
         id7_fs_act == 5 &&
         fs_dest_calls == 1 &&
+        fs_reset_res == 0 &&
+        g_id7_gm_try_reg_res == 0 &&
+        id7_mid_act == 0 &&
+        gm_post_reg == 1 &&
         g_id7_gm_create_calls == 1 &&
         g_id7_gm_show_calls == 1 &&
         id7_gm_created == 1 &&
@@ -777,12 +921,13 @@ public RunIdentityTests()
         id7_gm_act == 8)
     {
         g_id7_pass = 1;
-        print("[TEST-ID7] PASS: Cross-AMX replacement succeeded with full instance isolation.");
+        print("[TEST-ID7] PASS: Cross-AMX in-callback reset rejected; outer destroy authoritative; post-destroy reuse succeeds.");
     }
     else
     {
-        printf("[TEST-ID7] FAIL: fs_ok=%d fs_act=%d fs_dest=%d gm_c=%d gm_s=%d gm_c_flag=%d gm_v_flag=%d gm_act=%d",
-            fs_setup_ok, id7_fs_act, fs_dest_calls, g_id7_gm_create_calls, g_id7_gm_show_calls,
+        printf("[TEST-ID7] FAIL: fs_ok=%d fs_act=%d fs_dest=%d fs_rst=%d gm_try=%d mid_act=%d gm_reg=%d gm_c=%d gm_s=%d gm_cr=%d gm_v=%d gm_act=%d",
+            fs_setup_ok, id7_fs_act, fs_dest_calls, fs_reset_res, g_id7_gm_try_reg_res, id7_mid_act,
+            gm_post_reg, g_id7_gm_create_calls, g_id7_gm_show_calls,
             id7_gm_created, id7_gm_visible, id7_gm_act);
     }
 
@@ -1056,9 +1201,9 @@ public RunIdentityTests()
     }
 
     // -------------------------------------------------------------
-    // ID-EVICT: Eviction Candidate Genuine ABA Replacement
+    // ID-EVICT: Eviction Candidate Genuine ABA Replacement (Reconciled)
     // -------------------------------------------------------------
-    print("\n[TEST-ID-EVICT] Testing Eviction Candidate Genuine ABA Replacement...");
+    print("\n[TEST-ID-EVICT] Testing Eviction Candidate Reset Rejection & Post-Eviction Reuse...");
     SUI_ResetPlayer(0);
     SUI_SetMaxTextDraws(0, 256);
     SUI_SetEvictionThreshold(0, 200);
@@ -1066,6 +1211,7 @@ public RunIdentityTests()
     g_idevict_new_create_calls = 0;
     g_idevict_req_create_calls = 0;
     g_idevict_inplace_res = -1;
+    g_idevict_reset_res = -1;
     g_idevict_repl_res = -1;
 
     // Register and show candidate group (size 50, priority LOW)
@@ -1079,43 +1225,48 @@ public RunIdentityTests()
     // Trigger eviction with group size 180 (50 + 180 = 230 > 200 threshold)
     SUI_CreatePlayerFactoryGroup(0, "evict_req_grp", "OnIDEvict_ReqCreate", "OnIDEvict_ReqDestroy", "OnIDEvict_ReqShow", "OnIDEvict_ReqHide");
     SUI_SetGroupSize(0, "evict_req_grp", 180);
-    SUI_ShowGroup(0, "evict_req_grp"); // Triggers EvictOneHiddenGroup -> OnIDEvict_CandDestroy: in-place rejected, replaced after reset
+    SUI_ShowGroup(0, "evict_req_grp"); // Triggers EvictOneHiddenGroup -> OnIDEvict_CandDestroy
 
     new evict_req_cr = SUI_IsGroupCreated(0, "evict_req_grp");
+    new evict_req_vis = SUI_IsGroupVisible(0, "evict_req_grp");
     new evict_cand_cr_mid = SUI_IsGroupCreated(0, "evict_cand_grp");
-    new evict_act_mid = SUI_GetActiveTextDrawCount(0);
+    new evict_act_mid = SUI_GetActiveTextDrawCount(0); // 180
 
-    // Show replacement group
+    // Post-eviction: candidate group name is free outside callback
+    new evict_cand_post_reg = SUI_CreatePlayerFactoryGroup(0, "evict_cand_grp", "OnIDEvict_NewCreate", "OnIDEvict_NewDestroy", "OnIDEvict_NewShow", "OnIDEvict_NewHide");
+    SUI_SetGroupSize(0, "evict_cand_grp", 15);
     SUI_ShowGroup(0, "evict_cand_grp");
-    new evict_cand_cr_fin = SUI_IsGroupCreated(0, "evict_cand_grp");
-    new evict_cand_vis_fin = SUI_IsGroupVisible(0, "evict_cand_grp");
-    new evict_act_fin = SUI_GetActiveTextDrawCount(0);
+
+    new evict_cand_cr_final = SUI_IsGroupCreated(0, "evict_cand_grp");
+    new evict_act_final = SUI_GetActiveTextDrawCount(0); // 15
 
     SUI_DestroyGroup(0, "evict_cand_grp");
-    SUI_DestroyGroup(0, "evict_req_grp");
+    new evict_act_post = SUI_GetActiveTextDrawCount(0); // 0
     SUI_ResetPlayer(0);
 
     if (g_idevict_inplace_res == 0 &&
-        g_idevict_repl_res == 1 &&
+        g_idevict_reset_res == 0 &&
+        g_idevict_repl_res == 0 &&
         g_idevict_cand_destroy_calls == 1 &&
         g_idevict_req_create_calls == 0 &&
-        g_idevict_new_create_calls == 1 &&
-        g_idevict_new_show_calls == 1 &&
         evict_req_cr == 0 &&
+        evict_req_vis == 0 &&
         evict_cand_cr_mid == 0 &&
         evict_act_mid == 0 &&
-        evict_cand_cr_fin == 1 &&
-        evict_cand_vis_fin == 1 &&
-        evict_act_fin == 15)
+        evict_cand_post_reg == 1 &&
+        evict_cand_cr_final == 1 &&
+        evict_act_final == 15 &&
+        evict_act_post == 0)
     {
         g_id_evict_pass = 1;
-        print("[TEST-ID-EVICT] PASS: In-place rejected; genuine ABA replacement preserved without corruption.");
+        print("[TEST-ID-EVICT] PASS: Eviction candidate in-callback reset rejected; uncreated req group pruned; post-eviction reuse succeeds.");
     }
     else
     {
-        printf("[TEST-ID-EVICT] FAIL: in_pl=%d repl=%d dest_c=%d req_c=%d new_c=%d new_s=%d req_cr=%d mid_cr=%d mid_act=%d fin_cr=%d fin_vis=%d fin_act=%d",
-            g_idevict_inplace_res, g_idevict_repl_res, g_idevict_cand_destroy_calls, g_idevict_req_create_calls, g_idevict_new_create_calls, g_idevict_new_show_calls,
-            evict_req_cr, evict_cand_cr_mid, evict_act_mid, evict_cand_cr_fin, evict_cand_vis_fin, evict_act_fin);
+        printf("[TEST-ID-EVICT] FAIL: in_pl=%d rst_r=%d repl_r=%d dest_c=%d req_c=%d req_cr=%d req_v=%d cand_cr=%d mid_act=%d post_reg=%d cr_fin=%d act_fin=%d act_post=%d",
+            g_idevict_inplace_res, g_idevict_reset_res, g_idevict_repl_res, g_idevict_cand_destroy_calls,
+            g_idevict_req_create_calls, evict_req_cr, evict_req_vis, evict_cand_cr_mid, evict_act_mid, evict_cand_post_reg,
+            evict_cand_cr_final, evict_act_final, evict_act_post);
     }
 
     // -------------------------------------------------------------
@@ -1315,17 +1466,202 @@ public RunIdentityTests()
     }
 
     // -------------------------------------------------------------
+    // X1: Diagnostic ResetPlayer during cbCreate
+    // -------------------------------------------------------------
+    print("\n[TEST-X1] Diagnostic: ResetPlayer during cbCreate...");
+    SUI_ResetPlayer(0);
+    g_x1_create_calls = 0;
+    g_x1_reset_res = -1;
+    g_x1_rereg_res = -1;
+    g_x1_new_create_calls = 0;
+    g_x1_new_show_calls = 0;
+
+    SUI_CreatePlayerFactoryGroup(0, "x1_grp", "OnX1_OldCreate", "OnX1_OldDestroy", "OnX1_OldShow", "OnX1_OldHide");
+    SUI_SetGroupSize(0, "x1_grp", 10);
+    SUI_ShowGroup(0, "x1_grp");
+
+    new x1_created_mid = SUI_IsGroupCreated(0, "x1_grp");
+    new x1_visible_mid = SUI_IsGroupVisible(0, "x1_grp");
+    new x1_act_mid = SUI_GetActiveTextDrawCount(0);
+
+    SUI_DestroyGroup(0, "x1_grp");
+    new x1_act_post = SUI_GetActiveTextDrawCount(0);
+    SUI_ResetPlayer(0);
+
+    if (g_x1_create_calls == 1 &&
+        g_x1_reset_res == 1 &&
+        g_x1_rereg_res == 1 &&
+        g_x1_new_show_calls == 0 &&
+        x1_created_mid == 0 &&
+        x1_visible_mid == 0 &&
+        x1_act_mid == 0 &&
+        x1_act_post == 0)
+    {
+        g_x1_pass = 1;
+        print("[TEST-X1] PASS: ResetPlayer in cbCreate returned 1, replacement registered (1), show aborted (0 calls).");
+    }
+    else
+    {
+        printf("[TEST-X1] FAIL: calls=%d reset=%d rereg=%d show_c=%d cr=%d vis=%d act_mid=%d act_post=%d",
+            g_x1_create_calls, g_x1_reset_res, g_x1_rereg_res, g_x1_new_show_calls,
+            x1_created_mid, x1_visible_mid, x1_act_mid, x1_act_post);
+    }
+
+    // -------------------------------------------------------------
+    // X2: Diagnostic ResetPlayer during cbHide
+    // -------------------------------------------------------------
+    print("\n[TEST-X2] Diagnostic: ResetPlayer during cbHide...");
+    SUI_ResetPlayer(0);
+    g_x2_hide_calls = 0;
+    g_x2_reset_res = -1;
+    g_x2_rereg_res = -1;
+
+    SUI_CreatePlayerFactoryGroup(0, "x2_grp", "OnX2_Create", "OnX2_Destroy", "OnX2_Show", "OnX2_Hide");
+    SUI_SetGroupSize(0, "x2_grp", 10);
+    SUI_ShowGroup(0, "x2_grp");
+
+    SUI_HideGroup(0, "x2_grp");
+
+    new x2_cr_mid = SUI_IsGroupCreated(0, "x2_grp");
+    new x2_vis_mid = SUI_IsGroupVisible(0, "x2_grp");
+    new x2_act_mid = SUI_GetActiveTextDrawCount(0); // 10
+
+    SUI_DestroyGroup(0, "x2_grp");
+    new x2_act_post = SUI_GetActiveTextDrawCount(0); // 0
+    new x2_post_reg = SUI_CreatePlayerFactoryGroup(0, "x2_grp", "OnX2_Create", "OnX2_Destroy", "OnX2_Show", "OnX2_Hide");
+    SUI_DestroyGroup(0, "x2_grp");
+    SUI_ResetPlayer(0);
+
+    if (g_x2_hide_calls == 1 &&
+        g_x2_reset_res == 0 &&
+        g_x2_rereg_res == 0 &&
+        x2_cr_mid == 1 &&
+        x2_vis_mid == 0 &&
+        x2_act_mid == 10 &&
+        x2_act_post == 0 &&
+        x2_post_reg == 1)
+    {
+        g_x2_pass = 1;
+        print("[TEST-X2] PASS: ResetPlayer in cbHide returned 0, in-callback rereg rejected (0), post-destroy rereg succeeded (1).");
+    }
+    else
+    {
+        printf("[TEST-X2] FAIL: hide_c=%d reset=%d rereg=%d cr_mid=%d vis_mid=%d act_mid=%d act_post=%d post_reg=%d",
+            g_x2_hide_calls, g_x2_reset_res, g_x2_rereg_res, x2_cr_mid, x2_vis_mid, x2_act_mid, x2_act_post, x2_post_reg);
+    }
+
+    // -------------------------------------------------------------
+    // X3: Diagnostic ResetPlayer during cbDestroy
+    // -------------------------------------------------------------
+    print("\n[TEST-X3] Diagnostic: ResetPlayer during cbDestroy...");
+    SUI_ResetPlayer(0);
+    g_x3_destroy_calls = 0;
+    g_x3_reset_res = -1;
+    g_x3_rereg_res = -1;
+
+    SUI_CreatePlayerFactoryGroup(0, "x3_grp", "OnX3_Create", "OnX3_Destroy", "OnX3_Show", "OnX3_Hide");
+    SUI_SetGroupSize(0, "x3_grp", 10);
+    SUI_ShowGroup(0, "x3_grp");
+
+    SUI_DestroyGroup(0, "x3_grp");
+
+    new x3_cr_post = SUI_IsGroupCreated(0, "x3_grp");
+    new x3_act_post = SUI_GetActiveTextDrawCount(0); // 0
+    new x3_post_reg = SUI_CreatePlayerFactoryGroup(0, "x3_grp", "OnX3_Create", "OnX3_Destroy", "OnX3_Show", "OnX3_Hide");
+    SUI_DestroyGroup(0, "x3_grp");
+    SUI_ResetPlayer(0);
+
+    if (g_x3_destroy_calls == 1 &&
+        g_x3_reset_res == 0 &&
+        g_x3_rereg_res == 0 &&
+        x3_cr_post == 0 &&
+        x3_act_post == 0 &&
+        x3_post_reg == 1)
+    {
+        g_x3_pass = 1;
+        print("[TEST-X3] PASS: ResetPlayer in cbDestroy returned 0, in-callback rereg rejected (0), post-destroy rereg succeeded (1).");
+    }
+    else
+    {
+        printf("[TEST-X3] FAIL: dest_c=%d reset=%d rereg=%d cr_post=%d act_post=%d post_reg=%d",
+            g_x3_destroy_calls, g_x3_reset_res, g_x3_rereg_res, x3_cr_post, x3_act_post, x3_post_reg);
+    }
+
+    // -------------------------------------------------------------
+    // ID-ABA-CROSS: Cross-AMX Genuine ABA Replacement during cbCreate
+    // -------------------------------------------------------------
+    print("\n[TEST-ID-ABA-CROSS] Cross-AMX Genuine ABA Replacement during cbCreate...");
+    SUI_ResetPlayer(0);
+    g_gm_aba_create_calls = 0;
+    g_gm_aba_show_calls = 0;
+    g_gm_aba_reset_res = -1;
+    g_fs_aba_reg_res = -1;
+
+    SUI_CreatePlayerFactoryGroup(0, "aba_cross_grp", "OnGmAbaCross_Create", "OnGmAbaCross_Destroy", "OnGmAbaCross_Show", "OnGmAbaCross_Hide");
+    SUI_SetGroupSize(0, "aba_cross_grp", 8);
+    SUI_ShowGroup(0, "aba_cross_grp");
+
+    // Gamemode cbCreate triggered ResetPlayer (1) and FS registered same name (1)
+    // Gamemode ShowGroup aborted due to instanceId mismatch.
+    new fs_cr_initial = SUI_IsGroupCreated(0, "aba_cross_grp"); // 0
+    new fs_vis_initial = SUI_IsGroupVisible(0, "aba_cross_grp"); // 0
+    new fs_show_calls_initial = CallRemoteFunction("FS_GetAbaCrossShow", ""); // 0
+
+    // Now legitimately show the FS replacement group
+    CallRemoteFunction("FS_ShowAbaCross", "d", 0);
+    new fs_cr_shown = SUI_IsGroupCreated(0, "aba_cross_grp"); // 1
+    new fs_vis_shown = SUI_IsGroupVisible(0, "aba_cross_grp"); // 1
+    new fs_act_shown = SUI_GetActiveTextDrawCount(0); // 8
+    new fs_create_calls_shown = CallRemoteFunction("FS_GetAbaCrossCreate", ""); // 1
+    new fs_show_calls_shown = CallRemoteFunction("FS_GetAbaCrossShow", ""); // 1
+
+    // Cleanup FS group
+    CallRemoteFunction("FS_DestroyAbaCross", "d", 0);
+    new fs_act_post = SUI_GetActiveTextDrawCount(0); // 0
+    SUI_ResetPlayer(0);
+
+    if (g_gm_aba_create_calls == 1 &&
+        g_gm_aba_reset_res == 1 &&
+        g_fs_aba_reg_res == 1 &&
+        g_gm_aba_show_calls == 0 &&
+        fs_cr_initial == 0 &&
+        fs_vis_initial == 0 &&
+        fs_show_calls_initial == 0 &&
+        fs_cr_shown == 1 &&
+        fs_vis_shown == 1 &&
+        fs_act_shown == 8 &&
+        fs_create_calls_shown == 1 &&
+        fs_show_calls_shown == 1 &&
+        fs_act_post == 0)
+    {
+        g_id_aba_cross_pass = 1;
+        print("[TEST-ID-ABA-CROSS] PASS: Cross-AMX ABA replacement in cbCreate isolated by instanceId; FS group operated cleanly.");
+    }
+    else
+    {
+        printf("[TEST-ID-ABA-CROSS] FAIL: gm_c=%d reset=%d fs_reg=%d gm_s=%d fs_s_init=%d fs_cr=%d act_shown=%d fs_s_shown=%d act_post=%d",
+            g_gm_aba_create_calls, g_gm_aba_reset_res, g_fs_aba_reg_res, g_gm_aba_show_calls,
+            fs_show_calls_initial, fs_cr_shown, fs_act_shown, fs_show_calls_shown, fs_act_post);
+    }
+
+    // -------------------------------------------------------------
     // ID4: ProcessTick Same-Name Replacement (Deferred Timer)
     // -------------------------------------------------------------
     print("\n[TEST-ID4] Setting up ProcessTick Same-Name Replacement (short timeout)...");
     SUI_ResetPlayer(0);
+    g_id4_old_destroy_calls = 0;
+    g_id4_reset_res = -1;
+    g_id4_rereg_res = -1;
+    g_id4_new_create_calls = 0;
+    g_id4_new_show_calls = 0;
+
     SUI_CreatePlayerFactoryGroup(0, "id4", "OnID4_OldCreate", "OnID4_OldDestroy", "OnID4_OldShow", "OnID4_OldHide");
     SUI_SetGroupSize(0, "id4", 10);
     SUI_SetIdleTimeout(0, "id4", 50); // 50ms timeout
     SUI_ShowGroup(0, "id4");
     SUI_HideGroup(0, "id4");
 
-    // Wait 150ms for server ProcessTick to trigger idle destroy callback
+    // Wait 200ms for server ProcessTick to trigger idle destroy callback
     SetTimer("Step_ID4_Check", 200, false);
 }
 
@@ -1335,32 +1671,90 @@ public Step_ID4_Check()
     new id4_created_mid = SUI_IsGroupCreated(0, "id4");
     new id4_act_mid = SUI_GetActiveTextDrawCount(0);
 
-    // Show replacement group
+    // Legitimate replacement after idle destroy completed
+    new id4_post_reg = SUI_CreatePlayerFactoryGroup(0, "id4", "OnID4_NewCreate", "OnID4_NewDestroy", "OnID4_NewShow", "OnID4_NewHide");
+    SUI_SetGroupSize(0, "id4", 10);
     SUI_ShowGroup(0, "id4");
+
     new id4_created_final = SUI_IsGroupCreated(0, "id4");
     new id4_visible_final = SUI_IsGroupVisible(0, "id4");
     new id4_act_final = SUI_GetActiveTextDrawCount(0);
 
     SUI_DestroyGroup(0, "id4");
+    new id4_act_post = SUI_GetActiveTextDrawCount(0);
     SUI_ResetPlayer(0);
 
     if (g_id4_old_destroy_calls == 1 &&
+        g_id4_reset_res == 0 &&
+        g_id4_rereg_res == 0 &&
         id4_created_mid == 0 &&
         id4_act_mid == 0 &&
+        id4_post_reg == 1 &&
         g_id4_new_create_calls == 1 &&
         g_id4_new_show_calls == 1 &&
         id4_created_final == 1 &&
         id4_visible_final == 1 &&
-        id4_act_final == 10)
+        id4_act_final == 10 &&
+        id4_act_post == 0)
     {
         g_id4_pass = 1;
-        print("[TEST-ID4] PASS: ProcessTick idle destroy did not erase replacement group.");
+        print("[TEST-ID4] PASS: ProcessTick idle destroy rejected in-cb reset/rereg; post-destroy replacement clean.");
     }
     else
     {
-        printf("[TEST-ID4] FAIL: dest_c=%d mid_c=%d mid_act=%d new_c=%d new_s=%d fin_c=%d fin_v=%d fin_act=%d",
-            g_id4_old_destroy_calls, id4_created_mid, id4_act_mid,
-            g_id4_new_create_calls, g_id4_new_show_calls, id4_created_final, id4_visible_final, id4_act_final);
+        printf("[TEST-ID4] FAIL: dest_c=%d reset=%d rereg=%d cr_mid=%d act_mid=%d post_reg=%d new_c=%d new_s=%d fin_c=%d fin_v=%d fin_act=%d act_post=%d",
+            g_id4_old_destroy_calls, g_id4_reset_res, g_id4_rereg_res, id4_created_mid, id4_act_mid,
+            id4_post_reg, g_id4_new_create_calls, g_id4_new_show_calls, id4_created_final, id4_visible_final, id4_act_final, id4_act_post);
+    }
+
+    Setup_Test_X4();
+}
+
+forward Setup_Test_X4();
+public Setup_Test_X4()
+{
+    print("\n[TEST-X4] Setting up ProcessTick Idle Destroy Reset (short timeout)...");
+    SUI_ResetPlayer(0);
+    g_x4_destroy_calls = 0;
+    g_x4_reset_res = -1;
+    g_x4_rereg_res = -1;
+
+    SUI_CreatePlayerFactoryGroup(0, "x4_grp", "OnX4_Create", "OnX4_Destroy", "OnX4_Show", "OnX4_Hide");
+    SUI_SetGroupSize(0, "x4_grp", 8);
+    SUI_SetIdleTimeout(0, "x4_grp", 50); // 50ms timeout
+    SUI_ShowGroup(0, "x4_grp");
+    SUI_HideGroup(0, "x4_grp");
+
+    SetTimer("Step_X4_Check", 200, false);
+}
+
+forward Step_X4_Check();
+public Step_X4_Check()
+{
+    new x4_created_mid = SUI_IsGroupCreated(0, "x4_grp");
+    new x4_act_mid = SUI_GetActiveTextDrawCount(0);
+
+    // Legitimate post-destruction re-registration
+    new x4_post_reg = SUI_CreatePlayerFactoryGroup(0, "x4_grp", "OnX4_Create", "OnX4_Destroy", "OnX4_Show", "OnX4_Hide");
+    SUI_DestroyGroup(0, "x4_grp");
+    new x4_act_post = SUI_GetActiveTextDrawCount(0);
+    SUI_ResetPlayer(0);
+
+    if (g_x4_destroy_calls == 1 &&
+        g_x4_reset_res == 0 &&
+        g_x4_rereg_res == 0 &&
+        x4_created_mid == 0 &&
+        x4_act_mid == 0 &&
+        x4_post_reg == 1 &&
+        x4_act_post == 0)
+    {
+        g_x4_pass = 1;
+        print("[TEST-X4] PASS: ProcessTick idle destroy: ResetPlayer returned 0, in-cb rereg rejected (0), post-destroy rereg succeeded (1).");
+    }
+    else
+    {
+        printf("[TEST-X4] FAIL: dest_c=%d reset=%d rereg=%d cr_mid=%d act_mid=%d post_reg=%d act_post=%d",
+            g_x4_destroy_calls, g_x4_reset_res, g_x4_rereg_res, x4_created_mid, x4_act_mid, x4_post_reg, x4_act_post);
     }
 
     PrintIdentityResults();
@@ -1408,6 +1802,8 @@ public PrintIdentityResults()
     print("----------------------------------------------------------------");
     if (g_id_evict_pass) printf("ID-EVICT     (Eviction ABA Candidate Replace): PASS");
     else printf("ID-EVICT     (Eviction ABA Candidate Replace): FAIL");
+    if (g_id_aba_cross_pass) printf("ID-ABA-CROSS (Cross-AMX Genuine ABA Replace):   PASS");
+    else printf("ID-ABA-CROSS (Cross-AMX Genuine ABA Replace):   FAIL");
     print("----------------------------------------------------------------");
     print("      SUI-002 / SUI-017 OWNERSHIP & ANTI-HIJACK (O1-O2)         ");
     print("----------------------------------------------------------------");
@@ -1424,22 +1820,36 @@ public PrintIdentityResults()
     else printf("RAG2 (Cross-AMX Hijack Rejected / Conserved): FAIL");
     if (g_rag3_pass) printf("RAG3 (Legitimate Replacement Accounting):     PASS");
     else printf("RAG3 (Legitimate Replacement Accounting):     FAIL");
+    print("----------------------------------------------------------------");
+    print("      SUI-005 DIAGNOSTIC RESET TESTS (X1-X4)                    ");
+    print("----------------------------------------------------------------");
+    if (g_x1_pass) printf("X1   (ResetPlayer During cbCreate):         PASS");
+    else printf("X1   (ResetPlayer During cbCreate):         FAIL");
+    if (g_x2_pass) printf("X2   (ResetPlayer During cbHide):           PASS");
+    else printf("X2   (ResetPlayer During cbHide):           FAIL");
+    if (g_x3_pass) printf("X3   (ResetPlayer During cbDestroy):        PASS");
+    else printf("X3   (ResetPlayer During cbDestroy):        FAIL");
+    if (g_x4_pass) printf("X4   (ResetPlayer During Idle cbDestroy):   PASS");
+    else printf("X4   (ResetPlayer During Idle cbDestroy):   FAIL");
     print("================================================================");
 
     new total_pass = g_id1_pass + g_id2_pass + g_id3_pass + g_id4_pass + g_id5_pass +
                      g_id6_pass + g_id7_pass + g_id8_pass + g_id9_pass + g_id10_pass +
                      g_h1_pass + g_h2_pass + g_h3_pass + g_h4_pass +
-                     g_id_evict_pass +
+                     g_id_evict_pass + g_id_aba_cross_pass +
                      g_o1_pass + g_o2_pass +
-                     g_rag1_pass + g_rag2_pass + g_rag3_pass;
+                     g_rag1_pass + g_rag2_pass + g_rag3_pass +
+                     g_x1_pass + g_x2_pass + g_x3_pass + g_x4_pass;
 
-    if (total_pass == 20)
+    if (total_pass == 25)
     {
-        print("OVERALL RESULT: ALL GROUP IDENTITY, LIFECYCLE & OWNERSHIP TESTS PASSED! (20/20)");
+        print("OVERALL RESULT: ALL GROUP IDENTITY, LIFECYCLE & OWNERSHIP TESTS PASSED! (25/25)");
     }
     else
     {
-        printf("OVERALL RESULT: %d/20 TESTS PASSED.", total_pass);
+        printf("OVERALL RESULT: %d/25 TESTS PASSED.", total_pass);
     }
     print("================================================================\n");
+
+    SendRconCommand("exit");
 }

@@ -66,17 +66,79 @@ public FS_OnID7_Hide(playerid)
     return 1;
 }
 
+new g_fs_id7_reset_res = -1;
+
+forward FS_GetID7ResetResult();
+public FS_GetID7ResetResult()
+{
+    return g_fs_id7_reset_res;
+}
+
 forward FS_OnID7_Destroy(playerid);
 public FS_OnID7_Destroy(playerid)
 {
     g_fs_id7_destroy_calls++;
 
-    // During FS destroy callback, reset player and trigger Gamemode to register same name
-    SUI_ResetPlayer(playerid);
-    CallRemoteFunction("GM_RegisterID7", "d", playerid);
+    // During FS destroy callback, reset player returns 0 under SUI-005 contract
+    g_fs_id7_reset_res = SUI_ResetPlayer(playerid);
+    CallRemoteFunction("GM_TryRegisterID7", "d", playerid);
 
     return 1;
 }
+
+// -------------------------------------------------------------
+// ID-ABA-CROSS: Cross-AMX Genuine ABA Replacement during cbCreate
+// -------------------------------------------------------------
+new g_fs_aba_cross_create = 0;
+new g_fs_aba_cross_show = 0;
+new g_fs_aba_cross_destroy = 0;
+
+forward FS_RegisterAbaCross(playerid);
+public FS_RegisterAbaCross(playerid)
+{
+    g_fs_aba_cross_create = 0;
+    g_fs_aba_cross_show = 0;
+    g_fs_aba_cross_destroy = 0;
+
+    new res = SUI_CreatePlayerFactoryGroup(
+        playerid,
+        "aba_cross_grp",
+        "FS_OnAbaCross_Create",
+        "FS_OnAbaCross_Destroy",
+        "FS_OnAbaCross_Show",
+        "FS_OnAbaCross_Hide"
+    );
+    SUI_SetGroupSize(playerid, "aba_cross_grp", 8);
+    return res;
+}
+
+forward FS_ShowAbaCross(playerid);
+public FS_ShowAbaCross(playerid)
+{
+    return SUI_ShowGroup(playerid, "aba_cross_grp");
+}
+
+forward FS_DestroyAbaCross(playerid);
+public FS_DestroyAbaCross(playerid)
+{
+    return SUI_DestroyGroup(playerid, "aba_cross_grp");
+}
+
+forward FS_GetAbaCrossCreate(); public FS_GetAbaCrossCreate() { return g_fs_aba_cross_create; }
+forward FS_GetAbaCrossShow(); public FS_GetAbaCrossShow() { return g_fs_aba_cross_show; }
+forward FS_GetAbaCrossDestroy(); public FS_GetAbaCrossDestroy() { return g_fs_aba_cross_destroy; }
+
+forward FS_OnAbaCross_Create(playerid);
+public FS_OnAbaCross_Create(playerid) { g_fs_aba_cross_create++; return 1; }
+
+forward FS_OnAbaCross_Show(playerid);
+public FS_OnAbaCross_Show(playerid) { g_fs_aba_cross_show++; return 1; }
+
+forward FS_OnAbaCross_Hide(playerid);
+public FS_OnAbaCross_Hide(playerid) { return 1; }
+
+forward FS_OnAbaCross_Destroy(playerid);
+public FS_OnAbaCross_Destroy(playerid) { g_fs_aba_cross_destroy++; return 1; }
 
 new g_fs_cross_create_calls = 0;
 new g_fs_cross_show_calls = 0;

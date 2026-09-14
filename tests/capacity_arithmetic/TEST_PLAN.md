@@ -16,6 +16,10 @@ This document defines the regression test suite for **SUI-004** (Overflow-Safe C
 
 ## 2. Test Specifications (C1–C12)
 
+> [!IMPORTANT]
+> **Execution Environment Requirement:**
+> `capacity_filterscript` must **NEVER** be preloaded in `server.cfg` under `filterscripts`. It is designed to be loaded dynamically during runtime by Test C9 via `SendRconCommand("loadfs capacity_filterscript")`. Preloading it in `server.cfg` allocates 15 textdraws prior to suite initialization, introducing an offset into initial capacity baselines and causing false-positive failures across 11 assertions. Always run with an empty `filterscripts` entry in `server.cfg`.
+
 ### Test C1: Normal Addition
 - **Setup**: Active = 0, threshold = 230.
 - **Actions**:
