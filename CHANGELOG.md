@@ -7,6 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **SUI-005**: Hardened player teardown transactions (`CleanupPlayer` and `ResetPlayer`), blocked re-entrant mutations, prevented recursion, and established explicit failure preservation contracts. Status: `FIXED — runtime teardown regression verified`.
+  - Introduced `enum class PlayerTeardownState : uint8_t { None = 0, Cleanup, Reset }` in `PlayerContext`.
+  - Enforced teardown guards across all mutation points (`RegisterFactoryGroup`, `ShowGroup`, `HideGroup`, `DestroyGroup`, `SetIdleTimeout`, `SetGroupSize`, `SetMaxTextDraws`, `SetEvictionThreshold`, `SetGroupPriority`, `SetGroupEvictable`, `TouchGroup`, `EnsureCapacity`), rejecting mutations during active teardown callbacks to prevent orphaned resources.
+  - Guarded `CleanupPlayer` and `ResetPlayer` against nested re-entrant recursion (`teardownState != None`), returning `false` immediately.
+  - Implemented direct pruning of uncreated groups (`isCreated == false`) from the player's group container without executing callbacks.
+  - Snapshotted only created groups (`isCreated == true`) as `{groupName, instanceId}` tuples before iterating.
+  - Differentiated terminal `CleanupPlayer` from non-terminal `ResetPlayer`:
+    - `CleanupPlayer`: Best-effort destruction of created groups; unconditionally purges player context (`players.erase(playerId)`) upon completion; returns `true` (1) on full success, `false` (0) on any failed callback.
+    - `ResetPlayer`: Destroys created groups; if any callback fails or encounters an AMX error, preserves the failed group in tracking with conservative state and active capacity preserved; player context is retained; teardown flag is restored to `None` for script-level recovery; returns `true` (1) on complete reset, `false` (0) if any group failed.
+  - Updated `SUI_CleanupPlayer` and `SUI_ResetPlayer` native return values to `bool` in C++ and `1 : 0` in Pawn.
+  - Verified live runtime execution on 32-bit Linux SA-MP dedicated server (`samp03svr`) with dedicated test suite `tests/player_teardown/` passing 16/16 test scenarios (T1–T16).
+  - Verified cumulative 95/95 passing assertions across all test suites without regressions.
 - **SUI-006**: Decoupled Pawn callback return values from SUI lifecycle state transitions and established robust callback execution semantics. Status: `FIXED — runtime callback semantics verified`.
   - Introduced `struct PawnCallResult` with explicit execution fields (`found`, `executed`, `amxError`, `retval`, `Success()`), separating execution validity (`amx_Exec == AMX_ERR_NONE`) from application-level return values.
   - Decoupled lifecycle transitions from callback return values across all 7 callback invocation points in `ShowGroup` (create & show boundaries), `HideGroup`, `DestroyGroupInternal` (hide & destroy boundaries), `EvictOneHiddenGroup`, and `ProcessTick`. Return values `0`, `1`, `42`, `-1`, or omitted `0` are treated as informational and do not abort state transitions.

@@ -14,7 +14,7 @@
 | **SUI-002** | High | AMX / Dispatch | Missing AMX ownership / ambiguous callback routing | `FIXED — runtime multi-AMX regression verified` | Phase 3 |
 | **SUI-003** | Medium | Natives / Validation | Unsafe Pawn parameter validation and signed/unsigned conversion | `FIXED — runtime input validation verified` | Phase 4 |
 | **SUI-004** | Medium | Core / Capacity | Capacity arithmetic overflow and accounting invariant safety | `FIXED — runtime regression verified` | Phase 5 |
-| **SUI-005** | High | Core / Lifecycle | Reset/Cleanup state loss when destruction fails | `CONFIRMED` | Phase 1 |
+| **SUI-005** | High | Core / Lifecycle | Reset/Cleanup state loss when destruction fails | `FIXED — runtime teardown regression verified` | Phase 8 |
 | **SUI-006** | Medium | Core / AMX | Callback return-value / internal state divergence | `FIXED — runtime callback semantics verified` | Phase 7 |
 | **SUI-007** | Medium | Core / Eviction | Destructive capacity eviction without pre-flight sufficiency | `CONFIRMED` | Phase 2 |
 | **SUI-008** | Medium | Core / State Machine | Failed-show hidden timestamp/state anomaly | `CONFIRMED` | Phase 1 |
@@ -97,15 +97,11 @@
 - **ID:** SUI-005
 - **Severity:** High
 - **Area:** Core / Lifecycle
-- **Status:** CONFIRMED
-- **Current behavior:** `CleanupPlayer` and `ResetPlayer` take an initial snapshot of created group names (`groupNames`), invoke `DestroyGroupInternal` on each, and subsequently call `players.erase(playerId)` unconditionally.
-- **Risk:**
-  1. If a destruction callback fails or returns 0, the textdraw remains allocated in the server, but SUI erases its tracking context, leading to permanent handle leakage.
-  2. **Phase 1.1 Lifecycle Finding (Snapshot Creation Leak):** If a destruction callback during `CleanupPlayer` or `ResetPlayer` registers and creates a NEW group (allocating SA-MP textdraw resources), the outer cleanup routine continues executing using its pre-taken snapshot. Once the snapshot finishes, `players.erase(playerId)` destroys the `PlayerContext`. SUI completely forgets the player, but the newly spawned group's textdraws remain permanently allocated in SA-MP server memory without any tracking or cleanup.
-- **Reproduction Path:** Call `SUI_CleanupPlayer(0)`. Inside `cbDestroy` of group A, script executes `SUI_CreatePlayerFactoryGroup(0, "new_group", ...)` and `SUI_ShowGroup(0, "new_group")`. Outer loop completes. `players.erase(0)` runs. Textdraws for `new_group` are orphaned in SA-MP.
-- **Recommended Future Phase:** Phase 2 (Lifecycle & Cleanup State Machine Redesign).
-- **Evidence:** `src/Core.cpp:494-531`, `src/Core.cpp:551-588`.
-- **Planned phase:** Phase 2
+- **Status:** FIXED — runtime teardown regression verified
+- **Fix Summary:** Implemented explicit `PlayerTeardownState` (`None`, `Cleanup`, `Reset`) on `PlayerContext`. Enforced mutual exclusion blocking nested teardown recursion and blocking all re-entrant mutations (group creation, registration, show, hide, size, priority, evictability) while teardown is active. Decoupled and strictly differentiated `CleanupPlayer` (terminal disconnect; snapshot created groups, prune uncreated, best-effort destroy, unconditional player purge) from `ResetPlayer` (non-terminal reset; snapshot created groups, prune uncreated, preserve groups and capacity if destroy callback fails, retain context if incomplete, restore teardown state to allow recovery). Both natives now return `bool` indicating complete destruction success (`1`) vs incomplete/failed callback (`0`).
+- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/player_teardown/player_teardown.pwn` with filterscript `player_teardown_filterscript.pwn` across scenarios T1 through T16. All 16 scenarios passed with 0 crashes, 0 memory corruption, and zero accounting drift. Verified zero regressions across SUI-001 (R1–R10), SUI-002 (A1–A7), SUI-003 (V1–V10), SUI-004 (C1–C12 + G1–G7), SUI-017 (ID1–ID10, H1–H4, ID-EVICT, O1, O2, RAG1–RAG3), and SUI-006 (P1–P13). Cumulative 95/95 runtime assertions passing.
+- **Evidence:** `src/Core.hpp:27-31, 38, 126-128`, `src/Core.cpp:320-335, 415-430, 480-500, 520-650`, `src/Natives.cpp:60-70`, `pawn/sui.inc`, `tests/player_teardown/`.
+- **Planned phase:** Phase 8
 
 ---
 

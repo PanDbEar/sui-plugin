@@ -159,13 +159,52 @@ struct PawnCallResult {
 ### 5.2. Callback Contract
 1. **Pawn Return Values Are Informational**: Return values (`0`, `1`, `42`, `-1`, etc.) are captured for diagnostic logging but do **NOT** determine whether SUI lifecycle transitions succeed. Callbacks are not veto hooks.
 2. **Missing Callbacks Fail Safely**: If a callback is not defined in the owning AMX, `found` is `false`, `Success()` returns `false`, and the transition safely aborts without committing state.
-3. **AMX Execution Errors Abort State Commits**: If `amx_Exec` returns an error (e.g. `AMX_ERR_ZERODIV`), `Success()` returns `false`, preventing SUI from committing the state transition.
+3. **AMX Execution Errors Abort State Commits**: If `amx_Exec` returns an error (e.g. `AMX_ERR_DIVIDE` = 11), `Success()` returns `false`, preventing SUI from committing the state transition.
 4. **Conservative State Policies on Execution Failure**:
    - **Create**: Does not mark created; does not add capacity.
    - **Show**: Does not mark visible.
    - **Hide**: Preserves existing visible state.
    - **Destroy**: Preserves created state and capacity.
+5. **Activity Tracking Model**: Group idle and visibility timing are tracked explicitly via monotonic timestamps (`lastUsedTick` and `hiddenSinceTick`), ensuring predictable timeouts without relying on external clocks.
 
 ### 5.3. External Resource Transactional Limitation (SUI-018)
 While SUI guarantees that its internal state machine remains consistent and aborts state transitions upon AMX execution errors, SUI does not track or manage underlying raw SA-MP textdraw IDs. If a callback partially allocates textdraws before encountering an execution error, SUI cannot automatically roll back those external host resources.
+
+---
+
+## 6. Player Teardown Transactions & Failure Preservation (SUI-005)
+
+### 6.1. Teardown Phases and Mutual Exclusion
+To prevent state loss, memory leaks, and infinite recursion during player teardown, `PlayerContext` maintains an explicit `PlayerTeardownState`:
+
+```cpp
+enum class PlayerTeardownState : uint8_t {
+    None = 0,
+    Cleanup,
+    Reset
+};
+```
+
+1. **Re-entrant Mutation Blocking**: When `teardownState != None`, all mutations for that player are strictly blocked:
+   - `RegisterFactoryGroup`: Returns `false`. Prevents newly-created groups during `cbDestroy` from being orphaned.
+   - `ShowGroup`: Returns `false`.
+   - `HideGroup`: Returns `false`.
+   - `SetIdleTimeout`, `SetGroupSize`, `SetMaxTextDraws`, `SetEvictionThreshold`, `SetGroupPriority`, `SetGroupEvictable`, `TouchGroup`, `EnsureCapacity`: Ignored or return `false`.
+2. **Teardown Recursion Blocking**: If `SUI_CleanupPlayer` or `SUI_ResetPlayer` is invoked while `teardownState != None`, the nested call immediately returns `false` without executing or corrupting in-flight teardown iterators.
+
+### 6.2. Two Teardown Contracts
+SUI strictly differentiates between terminal disconnect cleanup and non-terminal player resets:
+
+| Trait | `CleanupPlayer` | `ResetPlayer` |
+| :--- | :--- | :--- |
+| **Primary Use Case** | `OnPlayerDisconnect` | Gamemode transitions, minigame resets, character switch |
+| **Snapshotted Scope** | Only groups with `isCreated == true` | Only groups with `isCreated == true` |
+| **Uncreated Groups** | Pruned directly from `groups` map (no callback) | Pruned directly from `groups` map (no callback) |
+| **Failed Destructions** | Logged as warning; teardown continues | **Preserved in tracking** with conservative state and capacity |
+| **Final Player Context** | **Unconditionally erased** (`players.erase`) | Erased ONLY if all groups destroyed cleanly; **retained if any failed** |
+| **Return Value** | `true` (1) if all destroyed cleanly; `false` (0) if any callback failed | `true` (1) if reset completed cleanly; `false` (0) if any failed |
+| **Teardown State Post-Condition** | Context gone | Reset to `None` to allow script-level recovery |
+
+### 6.3. Snapshot and Pruning Order
+Both routines snapshot target groups as a vector of `{groupName, instanceId}` tuples. Uncreated groups (`isCreated == false`) are removed directly from the `groups` container before iterating, ensuring zero callbacks are invoked for unallocated resources while preventing iterator invalidation.
 

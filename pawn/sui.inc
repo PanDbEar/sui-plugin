@@ -69,18 +69,20 @@ native bool:SUI_DestroyGroup(playerid, const group[]);
 
 /**
  * Cleans up all groups for a player. Called on disconnect.
- * Hides any visible groups, destroys all created groups, and removes player state.
+ * Hides any visible groups, destroys all created groups, and unconditionally removes internal player state.
  * 
  * @param playerid Target player ID
- * @return 1 on success, 0 on failure
+ * @return 1 if all destroy callbacks completed successfully, 0 if one or more destroy callbacks failed (internal context is still purged)
  */
 native SUI_CleanupPlayer(playerid);
 
 /**
  * Resets SUI state for an active player without disconnecting.
+ * Hides and destroys all created groups. If all groups are destroyed cleanly, resets player context.
+ * If any destruction callback fails, the failed group remains tracked to prevent resource leakage.
  * 
  * @param playerid Target player ID
- * @return 1 on success, 0 on failure
+ * @return 1 if reset completed fully, 0 if reset was incomplete and failed tracked groups remain
  */
 native SUI_ResetPlayer(playerid);
 

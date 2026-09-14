@@ -80,8 +80,13 @@ Immediately destroys a group. If the group is currently visible, it calls `cbHid
 ```pawn
 native SUI_CleanupPlayer(playerid);
 ```
-Cleans up all groups for a player. Intended for `OnPlayerDisconnect`. Hides all visible groups, destroys all allocated groups, and removes the player's tracking state from memory.
-- **Returns**: `1`.
+Performs terminal cleanup of all groups for a player. Intended for `OnPlayerDisconnect`.
+- Puts the player into terminal teardown state, rejecting any new group registrations, group shows, or property mutations during callbacks.
+- Hides all visible groups (`cbHide`) and invokes `cbDestroy` for all created groups.
+- Directly prunes uncreated group definitions without executing callbacks.
+- Unconditionally purges the player context and all group tracking state from memory upon completion.
+- Nested calls to `SUI_CleanupPlayer` or `SUI_ResetPlayer` during teardown are blocked and return `0`.
+- **Returns**: `1` if all group destructions succeeded; `0` if any destroy callback failed, encountered an AMX error, or if called during an active teardown (context is still purged).
 
 ---
 
@@ -89,8 +94,15 @@ Cleans up all groups for a player. Intended for `OnPlayerDisconnect`. Hides all 
 ```pawn
 native SUI_ResetPlayer(playerid);
 ```
-Resets all SUI groups and counters for an active player without disconnecting.
-- **Returns**: `1`.
+Performs non-terminal reset of all SUI groups and counters for an active connected player (e.g. gamemode transition, minigame reset).
+- Puts the player into reset teardown state, rejecting any new group registrations, group shows, or property mutations during callbacks.
+- Hides all visible groups (`cbHide`) and invokes `cbDestroy` for all created groups.
+- Directly prunes uncreated group definitions without executing callbacks.
+- Groups whose destruction callback succeeds are removed and their capacity deducted.
+- If a group's `cbDestroy` fails or encounters an AMX runtime error, the group is **preserved in tracking** with conservative state (`isCreated = true`, `isVisible = false`) and its textdraw capacity remains allocated to prevent resource leakage.
+- If all groups are destroyed cleanly, the player context is fully cleared. If any group fails destruction, the player context is retained with failed groups preserved, and the teardown guard is restored to allow recovery.
+- Nested calls to `SUI_CleanupPlayer` or `SUI_ResetPlayer` during teardown are blocked and return `0`.
+- **Returns**: `1` if all groups were destroyed cleanly and context was reset; `0` if any group failed destruction (failed groups preserved) or if called during an active teardown.
 
 ---
 

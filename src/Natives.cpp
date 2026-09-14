@@ -50,8 +50,8 @@ cell AMX_NATIVE_CALL Natives::SUI_ShowGroup(AMX* amx, cell* params)
 
     SUICore::Debug("[SUI-DEBUG] Native SUI_ShowGroup called. playerid=%d group=%s", playerId, group.c_str());
 
-    SUICore::ShowGroup(playerId, group);
-    return 1;
+    bool ok = SUICore::ShowGroup(playerId, group);
+    return ok ? 1 : 0;
 }
 
 cell AMX_NATIVE_CALL Natives::SUI_HideGroup(AMX* amx, cell* params)
@@ -66,8 +66,8 @@ cell AMX_NATIVE_CALL Natives::SUI_HideGroup(AMX* amx, cell* params)
         return 0;
     }
 
-    SUICore::HideGroup(playerId, group);
-    return 1;
+    bool ok = SUICore::HideGroup(playerId, group);
+    return ok ? 1 : 0;
 }
 
 cell AMX_NATIVE_CALL Natives::SUI_SetIdleTimeout(AMX* amx, cell* params)
@@ -96,8 +96,7 @@ cell AMX_NATIVE_CALL Natives::SUI_SetIdleTimeout(AMX* amx, cell* params)
 cell AMX_NATIVE_CALL Natives::SUI_CleanupPlayer(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 1)) return 0;
-    SUICore::CleanupPlayer(params[1]);
-    return 1;
+    return SUICore::CleanupPlayer(params[1]) ? 1 : 0;
 }
 
 cell AMX_NATIVE_CALL Natives::SUI_ResetPlayer(AMX* amx, cell* params)
@@ -106,8 +105,7 @@ cell AMX_NATIVE_CALL Natives::SUI_ResetPlayer(AMX* amx, cell* params)
 
     int playerId = params[1];
 
-    SUICore::ResetPlayer(playerId);
-    return 1;
+    return SUICore::ResetPlayer(playerId) ? 1 : 0;
 }
 
 cell AMX_NATIVE_CALL Natives::SUI_SetGroupSize(AMX* amx, cell* params)

@@ -38,11 +38,19 @@ struct SUIGroup {
     AMX* ownerAmx = nullptr;
 };
 
+enum class PlayerTeardownState : uint8_t {
+    None = 0,
+    Cleanup,
+    Reset
+};
+
 struct PlayerContext {
     int playerId = -1;
     uint32_t activeTextDrawCount = 0;
     uint32_t maxTextDraws = 256;
     uint32_t evictionThreshold = 230;
+
+    PlayerTeardownState teardownState = PlayerTeardownState::None;
 
     std::unordered_map<std::string, SUIGroup> groups;
 };
@@ -83,13 +91,13 @@ public:
                                      const std::string& cbCreate, const std::string& cbDestroy, 
                                      const std::string& cbShow, const std::string& cbHide);
                                      
-    static void ShowGroup(int playerId, const std::string& groupName);
-    static void HideGroup(int playerId, const std::string& groupName);
+    static bool ShowGroup(int playerId, const std::string& groupName);
+    static bool HideGroup(int playerId, const std::string& groupName);
     
     static void SetIdleTimeout(int playerId, const std::string& groupName, uint32_t timeoutMs);
     
-    static void CleanupPlayer(int playerId);
-    static void ResetPlayer(int playerId);
+    static bool CleanupPlayer(int playerId);
+    static bool ResetPlayer(int playerId);
 
     static bool SetGroupSize(int playerId, const std::string& groupName, uint32_t size);
     static uint32_t GetActiveTextDrawCount(int playerId);

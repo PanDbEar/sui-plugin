@@ -298,6 +298,13 @@ bool SUICore::RegisterFactoryGroup(
     auto itPlayer = players.find(playerId);
     if (itPlayer != players.end())
     {
+        // Invariant 0: Mutation / registration during active player teardown is REJECTED
+        if (itPlayer->second.teardownState != PlayerTeardownState::None)
+        {
+            Debug("RegisterFactoryGroup rejected: player %d is undergoing teardown", playerId);
+            return false;
+        }
+
         auto itGroup = itPlayer->second.groups.find(group);
         if (itGroup != itPlayer->second.groups.end())
         {
@@ -378,7 +385,7 @@ bool SUICore::RegisterFactoryGroup(
     return true;
 }
 
-void SUICore::ShowGroup(int playerId, const std::string& groupName)
+bool SUICore::ShowGroup(int playerId, const std::string& groupName)
 {
     Debug("ShowGroup requested playerid=%d group=%s", playerId, groupName.c_str());
 
@@ -389,7 +396,13 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
             playerId,
             groupName.c_str()
         );
-        return;
+        return false;
+    }
+
+    if (ctx->teardownState != PlayerTeardownState::None)
+    {
+        Debug("ShowGroup rejected: player %d is undergoing teardown", playerId);
+        return false;
     }
 
     auto it = ctx->groups.find(groupName);
@@ -399,7 +412,7 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
             playerId,
             groupName.c_str()
         );
-        return;
+        return false;
     }
 
     auto& group = it->second;
@@ -419,7 +432,7 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
     {
         Debug("ShowGroup blocked recursion playerid=%d group=%s instance=%llu",
             playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
-        return;
+        return false;
     }
 
     group.isExecutingCallback = true;
@@ -444,7 +457,7 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
             {
                 postGroup->isExecutingCallback = false;
             }
-            return;
+            return false;
         }
 
         // Re-acquire group before calling create callback
@@ -453,7 +466,7 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
         {
             Debug("[SUI] ShowGroup aborted: group removed or replaced during capacity eviction playerid=%d group=%s old=%llu",
                 playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
-            return;
+            return false;
         }
 
         AMX* ownerAmx = groupBeforeCreate->ownerAmx;
@@ -475,7 +488,7 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
         {
             Debug("ShowGroup aborted: player context removed during create callback playerid=%d group=%s",
                 playerId, groupName.c_str());
-            return;
+            return false;
         }
 
         auto* postGroup = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
@@ -483,7 +496,7 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
         {
             Debug("[SUI] Group instance changed during callback: playerid=%d group=%s old=%llu; aborting stale operation",
                 playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
-            return;
+            return false;
         }
 
         if (createSuccess)
@@ -493,7 +506,7 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
                 Debug("ShowGroup warning: group was already created during create callback playerid=%d group=%s",
                     playerId, groupName.c_str());
                 postGroup->isExecutingCallback = false;
-                return;
+                return false;
             }
 
             // Lock size to authorizedSize and add to accounting
@@ -518,7 +531,7 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
                     authorizedSize
                 );
                 postGroup->isExecutingCallback = false;
-                return;
+                return false;
             }
         }
         else
@@ -528,6 +541,8 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
                 groupName.c_str(),
                 cbCreate.c_str()
             );
+            postGroup->isExecutingCallback = false;
+            return false;
         }
     }
 
@@ -537,9 +552,10 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
     {
         Debug("[SUI] ShowGroup aborted before show: instance changed or removed playerid=%d group=%s old=%llu",
             playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
-        return;
+        return false;
     }
 
+    bool showSuccess = true;
     if (groupBeforeShow->isCreated && !groupBeforeShow->isVisible)
     {
         std::string cbShow = groupBeforeShow->cbShow;
@@ -552,7 +568,7 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
             cbShow.c_str()
         );
 
-        bool showSuccess = CallPawnFunction(ownerAmx, playerId, cbShow).Success();
+        showSuccess = CallPawnFunction(ownerAmx, playerId, cbShow).Success();
 
         // Re-acquire after show callback
         auto* postGroup = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
@@ -582,6 +598,7 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
         {
             Debug("[SUI] Group instance changed during show callback: playerid=%d group=%s old=%llu; aborting stale operation",
                 playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
+            return false;
         }
     }
 
@@ -591,9 +608,10 @@ void SUICore::ShowGroup(int playerId, const std::string& groupName)
     {
         finalGroup->isExecutingCallback = false;
     }
+    return showSuccess;
 }
 
-void SUICore::HideGroup(int playerId, const std::string& groupName)
+bool SUICore::HideGroup(int playerId, const std::string& groupName)
 {
     Debug("HideGroup requested playerid=%d group=%s", playerId, groupName.c_str());
 
@@ -604,7 +622,13 @@ void SUICore::HideGroup(int playerId, const std::string& groupName)
             playerId,
             groupName.c_str()
         );
-        return;
+        return false;
+    }
+
+    if (ctx->teardownState != PlayerTeardownState::None)
+    {
+        Debug("HideGroup rejected: player %d is undergoing teardown", playerId);
+        return false;
     }
 
     auto it = ctx->groups.find(groupName);
@@ -614,7 +638,7 @@ void SUICore::HideGroup(int playerId, const std::string& groupName)
             playerId,
             groupName.c_str()
         );
-        return;
+        return false;
     }
 
     auto& group = it->second;
@@ -624,7 +648,7 @@ void SUICore::HideGroup(int playerId, const std::string& groupName)
     {
         Debug("HideGroup blocked recursion playerid=%d group=%s instance=%llu",
             playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
-        return;
+        return false;
     }
 
     if (group.isVisible)
@@ -662,6 +686,7 @@ void SUICore::HideGroup(int playerId, const std::string& groupName)
                     groupName.c_str(),
                     static_cast<unsigned long long>(instanceId)
                 );
+                return true;
             }
             else
             {
@@ -670,12 +695,14 @@ void SUICore::HideGroup(int playerId, const std::string& groupName)
                     groupName.c_str(),
                     cbHide.c_str()
                 );
+                return false;
             }
         }
         else
         {
             Debug("[SUI] Group instance changed during hide callback: playerid=%d group=%s old=%llu; aborting stale operation",
                 playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
+            return false;
         }
     }
     else
@@ -685,15 +712,16 @@ void SUICore::HideGroup(int playerId, const std::string& groupName)
             groupName.c_str(),
             static_cast<unsigned long long>(instanceId)
         );
+        return true;
     }
 }
 
 void SUICore::SetIdleTimeout(int playerId, const std::string& groupName, uint32_t timeoutMs)
 {
     auto* ctx = GetPlayerContext(playerId);
-    if (!ctx)
+    if (!ctx || ctx->teardownState != PlayerTeardownState::None)
     {
-        Debug("SetIdleTimeout failed: player context not found playerid=%d group=%s",
+        Debug("SetIdleTimeout failed: player context not found or in teardown playerid=%d group=%s",
             playerId,
             groupName.c_str()
         );
@@ -720,19 +748,29 @@ void SUICore::SetIdleTimeout(int playerId, const std::string& groupName, uint32_
     }
 }
 
-void SUICore::CleanupPlayer(int playerId)
+bool SUICore::CleanupPlayer(int playerId)
 {
-    auto* ctx = GetPlayerContext(playerId);
-    if (!ctx)
+    auto itPlayer = players.find(playerId);
+    if (itPlayer == players.end())
     {
         Debug("CleanupPlayer skipped: player context not found playerid=%d", playerId);
-        return;
+        return true;
     }
+
+    auto& ctx = itPlayer->second;
+
+    if (ctx.teardownState != PlayerTeardownState::None)
+    {
+        Debug("CleanupPlayer rejected: playerid=%d already in teardown state", playerId);
+        return false;
+    }
+
+    ctx.teardownState = PlayerTeardownState::Cleanup;
 
     Debug("CleanupPlayer started playerid=%d groupCount=%d activeTD=%u",
         playerId,
-        static_cast<int>(ctx->groups.size()),
-        ctx->activeTextDrawCount
+        static_cast<int>(ctx.groups.size()),
+        ctx.activeTextDrawCount
     );
 
     // Snapshot created group names and instance IDs to prevent iterator invalidation across callbacks
@@ -741,8 +779,8 @@ void SUICore::CleanupPlayer(int playerId)
         uint64_t instanceId;
     };
     std::vector<GroupItem> groupItems;
-    groupItems.reserve(ctx->groups.size());
-    for (const auto& [groupName, group] : ctx->groups)
+    groupItems.reserve(ctx.groups.size());
+    for (const auto& [groupName, group] : ctx.groups)
     {
         if (group.isCreated)
         {
@@ -750,12 +788,27 @@ void SUICore::CleanupPlayer(int playerId)
         }
     }
 
+    // Direct erasure of uncreated groups without callbacks (T10)
+    for (auto it = ctx.groups.begin(); it != ctx.groups.end(); )
+    {
+        if (!it->second.isCreated)
+        {
+            it = ctx.groups.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    bool allDestroyedSuccessfully = true;
+
     for (const auto& item : groupItems)
     {
         auto* currentCtx = GetPlayerContext(playerId);
         if (!currentCtx)
         {
-            // Player context was erased during a previous callback
+            allDestroyedSuccessfully = false;
             break;
         }
 
@@ -768,33 +821,49 @@ void SUICore::CleanupPlayer(int playerId)
         bool ok = DestroyGroupInternal(*currentCtx, *group, item.name);
         if (!ok)
         {
+            allDestroyedSuccessfully = false;
             Debug("CleanupPlayer warning: failed to destroy group playerid=%d group=%s instance=%llu",
                 playerId,
                 item.name.c_str(),
                 static_cast<unsigned long long>(item.instanceId)
             );
         }
+        else
+        {
+            currentCtx->groups.erase(item.name);
+        }
     }
 
-    // Safely erase by stable player ID key rather than stale iterator
+    // Terminal purge: erase player context unconditionally
     players.erase(playerId);
 
-    Debug("CleanupPlayer finished playerid=%d", playerId);
+    Debug("CleanupPlayer finished playerid=%d allDestroyed=%d", playerId, allDestroyedSuccessfully ? 1 : 0);
+    return allDestroyedSuccessfully;
 }
 
-void SUICore::ResetPlayer(int playerId)
+bool SUICore::ResetPlayer(int playerId)
 {
-    auto* ctx = GetPlayerContext(playerId);
-    if (!ctx)
+    auto itPlayer = players.find(playerId);
+    if (itPlayer == players.end())
     {
         Debug("ResetPlayer skipped: player context not found playerid=%d", playerId);
-        return;
+        return true;
     }
+
+    auto& ctx = itPlayer->second;
+
+    if (ctx.teardownState != PlayerTeardownState::None)
+    {
+        Debug("ResetPlayer rejected: playerid=%d already in teardown state", playerId);
+        return false;
+    }
+
+    ctx.teardownState = PlayerTeardownState::Reset;
 
     Debug("ResetPlayer started playerid=%d groupCount=%d activeTD=%u",
         playerId,
-        static_cast<int>(ctx->groups.size()),
-        ctx->activeTextDrawCount
+        static_cast<int>(ctx.groups.size()),
+        ctx.activeTextDrawCount
     );
 
     // Snapshot created group names and instance IDs to prevent iterator invalidation across callbacks
@@ -803,12 +872,25 @@ void SUICore::ResetPlayer(int playerId)
         uint64_t instanceId;
     };
     std::vector<GroupItem> groupItems;
-    groupItems.reserve(ctx->groups.size());
-    for (const auto& [groupName, group] : ctx->groups)
+    groupItems.reserve(ctx.groups.size());
+    for (const auto& [groupName, group] : ctx.groups)
     {
         if (group.isCreated)
         {
             groupItems.push_back({groupName, group.instanceId});
+        }
+    }
+
+    // Direct erasure of uncreated groups without callbacks (T10)
+    for (auto it = ctx.groups.begin(); it != ctx.groups.end(); )
+    {
+        if (!it->second.isCreated)
+        {
+            it = ctx.groups.erase(it);
+        }
+        else
+        {
+            ++it;
         }
     }
 
@@ -817,7 +899,6 @@ void SUICore::ResetPlayer(int playerId)
         auto* currentCtx = GetPlayerContext(playerId);
         if (!currentCtx)
         {
-            // Player context was erased during a previous callback
             break;
         }
 
@@ -836,20 +917,41 @@ void SUICore::ResetPlayer(int playerId)
                 static_cast<unsigned long long>(item.instanceId)
             );
         }
+        else
+        {
+            currentCtx->groups.erase(item.name);
+        }
     }
 
-    // Safely erase by stable player ID key rather than stale iterator
-    players.erase(playerId);
+    auto* currentCtx = GetPlayerContext(playerId);
+    if (!currentCtx)
+    {
+        Debug("ResetPlayer finished playerid=%d (context was erased)", playerId);
+        return true;
+    }
 
-    Debug("ResetPlayer finished playerid=%d", playerId);
+    if (currentCtx->groups.empty())
+    {
+        players.erase(playerId);
+        Debug("ResetPlayer finished success playerid=%d", playerId);
+        return true;
+    }
+    else
+    {
+        // Preserve failed groups in context; clear teardown state to allow recovery (T16)
+        currentCtx->teardownState = PlayerTeardownState::None;
+        Debug("ResetPlayer finished with preserved failed groups playerid=%d remainingGroups=%zu activeTD=%u",
+            playerId, currentCtx->groups.size(), currentCtx->activeTextDrawCount);
+        return false;
+    }
 }
 
 bool SUICore::SetGroupSize(int playerId, const std::string& groupName, uint32_t size)
 {
     auto* ctx = GetPlayerContext(playerId);
-    if (!ctx)
+    if (!ctx || ctx->teardownState != PlayerTeardownState::None)
     {
-        Debug("SetGroupSize failed: player context not found playerid=%d group=%s", playerId, groupName.c_str());
+        Debug("SetGroupSize failed: player context not found or in teardown playerid=%d group=%s", playerId, groupName.c_str());
         return false;
     }
 
@@ -972,6 +1074,13 @@ void SUICore::SubtractActiveTextDrawCount(PlayerContext& ctx, uint32_t amount)
 
 bool SUICore::SetMaxTextDraws(int playerId, uint32_t maxCount)
 {
+    auto itPlayer = players.find(playerId);
+    if (itPlayer != players.end() && itPlayer->second.teardownState != PlayerTeardownState::None)
+    {
+        Debug("SetMaxTextDraws rejected: player %d is undergoing teardown", playerId);
+        return false;
+    }
+
     auto& ctx = players[playerId];
     ctx.playerId = playerId;
 
@@ -1008,6 +1117,13 @@ bool SUICore::SetMaxTextDraws(int playerId, uint32_t maxCount)
 
 bool SUICore::SetEvictionThreshold(int playerId, uint32_t threshold)
 {
+    auto itPlayer = players.find(playerId);
+    if (itPlayer != players.end() && itPlayer->second.teardownState != PlayerTeardownState::None)
+    {
+        Debug("SetEvictionThreshold rejected: player %d is undergoing teardown", playerId);
+        return false;
+    }
+
     auto& ctx = players[playerId];
     ctx.playerId = playerId;
 
@@ -1037,9 +1153,9 @@ bool SUICore::SetEvictionThreshold(int playerId, uint32_t threshold)
 void SUICore::SetGroupPriority(int playerId, const std::string& groupName, uint8_t priority)
 {
     auto* ctx = GetPlayerContext(playerId);
-    if (!ctx)
+    if (!ctx || ctx->teardownState != PlayerTeardownState::None)
     {
-        Debug("SetGroupPriority failed: player context not found playerid=%d group=%s",
+        Debug("SetGroupPriority failed: player context not found or in teardown playerid=%d group=%s",
             playerId,
             groupName.c_str()
         );
@@ -1091,7 +1207,7 @@ bool SUICore::EnsureCapacity(PlayerContext& ctx, uint32_t requiredSize)
     while (true)
     {
         auto* currentCtx = GetPlayerContext(playerId);
-        if (!currentCtx)
+        if (!currentCtx || currentCtx->teardownState != PlayerTeardownState::None)
         {
             return false;
         }
@@ -1275,6 +1391,12 @@ bool SUICore::DestroyGroup(int playerId, const std::string& groupName)
             playerId,
             groupName.c_str()
         );
+        return false;
+    }
+
+    if (ctx->teardownState != PlayerTeardownState::None)
+    {
+        Debug("DestroyGroup rejected: player %d is undergoing teardown", playerId);
         return false;
     }
 
@@ -1493,9 +1615,9 @@ void SUICore::PrintPlayerState(int playerId)
 void SUICore::SetGroupEvictable(int playerId, const std::string& groupName, bool enabled)
 {
     auto* ctx = GetPlayerContext(playerId);
-    if (!ctx)
+    if (!ctx || ctx->teardownState != PlayerTeardownState::None)
     {
-        Debug("SetGroupEvictable failed: player context not found playerid=%d group=%s",
+        Debug("SetGroupEvictable failed: player context not found or in teardown playerid=%d group=%s",
             playerId,
             groupName.c_str()
         );
@@ -1543,9 +1665,9 @@ bool SUICore::IsGroupEvictable(int playerId, const std::string& groupName)
 bool SUICore::TouchGroup(int playerId, const std::string& groupName)
 {
     auto itPlayer = players.find(playerId);
-    if (itPlayer == players.end())
+    if (itPlayer == players.end() || itPlayer->second.teardownState != PlayerTeardownState::None)
     {
-        Debug("TouchGroup failed: player context not found playerid=%d group=%s",
+        Debug("TouchGroup failed: player context not found or in teardown playerid=%d group=%s",
             playerId,
             groupName.c_str()
         );
