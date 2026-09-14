@@ -100,6 +100,32 @@ public FS_GetOnlyFsCallCount()
     return g_fs_only_fs_calls;
 }
 
+new g_fs_a7_hijack_result = -1;
+
+forward FS_TryHijackA7(playerid);
+public FS_TryHijackA7(playerid)
+{
+    g_fs_a7_hijack_result = SUI_CreatePlayerFactoryGroup(playerid, "a7_gm_grp", "OnFsA7_Create", "OnFsA7_Destroy", "OnFsA7_Show", "OnFsA7_Hide");
+    printf("[FS] FS_TryHijackA7 called for playerid=%d result=%d", playerid, g_fs_a7_hijack_result);
+    return g_fs_a7_hijack_result;
+}
+
+forward FS_GetA7HijackResult();
+public FS_GetA7HijackResult()
+{
+    return g_fs_a7_hijack_result;
+}
+
+forward OnFsA7_Create(playerid);
+public OnFsA7_Create(playerid) { return 1; }
+forward OnFsA7_Destroy(playerid);
+public OnFsA7_Destroy(playerid) { return 1; }
+forward OnFsA7_Show(playerid);
+public OnFsA7_Show(playerid) { return 1; }
+forward OnFsA7_Hide(playerid);
+public OnFsA7_Hide(playerid) { return 1; }
+
+
 forward FS_GetHijackResult();
 public FS_GetHijackResult()
 {

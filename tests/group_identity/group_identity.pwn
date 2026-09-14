@@ -17,7 +17,11 @@ new g_h2_pass = 0;
 new g_h3_pass = 0;
 new g_h4_pass = 0;
 new g_id_evict_pass = 0;
-new g_id_cross_amx_pass = 0;
+new g_o1_pass = 0;
+new g_o2_pass = 0;
+new g_rag1_pass = 0;
+new g_rag2_pass = 0;
+new g_rag3_pass = 0;
 
 // Call counters for ID1
 new g_id1_old_create_calls = 0;
@@ -374,12 +378,19 @@ public OnH3_Destroy(playerid) { g_h3_destroy_calls++; return 1; }
 new g_h4_old_create_calls = 0;
 new g_h4_new_create_calls = 0;
 new g_h4_new_show_calls = 0;
+new g_h4_inplace_res = -1;
+new g_h4_repl_res = -1;
+
 forward OnH4_OldCreate(playerid);
 public OnH4_OldCreate(playerid)
 {
     g_h4_old_create_calls++;
-    // Re-register same group name "h4_grp" WITHOUT ResetPlayer
-    SUI_CreatePlayerFactoryGroup(playerid, "h4_grp", "OnH4_NewCreate", "OnH4_NewDestroy", "OnH4_NewShow", "OnH4_NewHide");
+    // 1. In-place re-registration WITHOUT ResetPlayer must be REJECTED (returns 0)
+    g_h4_inplace_res = SUI_CreatePlayerFactoryGroup(playerid, "h4_grp", "OnH4_NewCreate", "OnH4_NewDestroy", "OnH4_NewShow", "OnH4_NewHide");
+
+    // 2. Legitimate replacement after ResetPlayer
+    SUI_ResetPlayer(playerid);
+    g_h4_repl_res = SUI_CreatePlayerFactoryGroup(playerid, "h4_grp", "OnH4_NewCreate", "OnH4_NewDestroy", "OnH4_NewShow", "OnH4_NewHide");
     SUI_SetGroupSize(playerid, "h4_grp", 6);
     return 1;
 }
@@ -406,6 +417,8 @@ new g_idevict_cand_destroy_calls = 0;
 new g_idevict_new_create_calls = 0;
 new g_idevict_new_show_calls = 0;
 new g_idevict_req_create_calls = 0;
+new g_idevict_inplace_res = -1;
+new g_idevict_repl_res = -1;
 
 forward OnIDEvict_CandCreate(playerid);
 public OnIDEvict_CandCreate(playerid) { return 1; }
@@ -417,8 +430,12 @@ forward OnIDEvict_CandDestroy(playerid);
 public OnIDEvict_CandDestroy(playerid)
 {
     g_idevict_cand_destroy_calls++;
-    // In-place replacement during eviction cbDestroy WITHOUT ResetPlayer
-    SUI_CreatePlayerFactoryGroup(playerid, "evict_cand_grp", "OnIDEvict_NewCreate", "OnIDEvict_NewDestroy", "OnIDEvict_NewShow", "OnIDEvict_NewHide");
+    // 1. In-place re-registration WITHOUT ResetPlayer must be REJECTED (returns 0)
+    g_idevict_inplace_res = SUI_CreatePlayerFactoryGroup(playerid, "evict_cand_grp", "OnIDEvict_NewCreate", "OnIDEvict_NewDestroy", "OnIDEvict_NewShow", "OnIDEvict_NewHide");
+
+    // 2. Legitimate replacement after ResetPlayer
+    SUI_ResetPlayer(playerid);
+    g_idevict_repl_res = SUI_CreatePlayerFactoryGroup(playerid, "evict_cand_grp", "OnIDEvict_NewCreate", "OnIDEvict_NewDestroy", "OnIDEvict_NewShow", "OnIDEvict_NewHide");
     SUI_SetGroupSize(playerid, "evict_cand_grp", 15);
     return 1;
 }
@@ -441,28 +458,70 @@ public OnIDEvict_ReqShow(playerid) { return 1; }
 forward OnIDEvict_ReqHide(playerid);
 public OnIDEvict_ReqHide(playerid) { return 1; }
 
-// ----------------------------------------------------------------------------
-// ID-CROSS-AMX Callbacks
-// ----------------------------------------------------------------------------
-new g_cross_gm_destroy_calls = 0;
-new g_cross_gm_create_calls = 0;
-new g_cross_gm_show_calls = 0;
+// -------------------------------------------------------------
+// O1 & O2 Callbacks
+// -------------------------------------------------------------
+new g_o1_gm_create_calls = 0;
+new g_o1_gm_show_calls = 0;
 
-forward OnCrossGM_Create(playerid);
-public OnCrossGM_Create(playerid) { g_cross_gm_create_calls++; return 1; }
-forward OnCrossGM_Show(playerid);
-public OnCrossGM_Show(playerid) { g_cross_gm_show_calls++; return 1; }
-forward OnCrossGM_Hide(playerid);
-public OnCrossGM_Hide(playerid) { return 1; }
-forward OnCrossGM_Destroy(playerid);
-public OnCrossGM_Destroy(playerid)
+forward OnO1_GM_Create(playerid);
+public OnO1_GM_Create(playerid)
 {
-    g_cross_gm_destroy_calls++;
-    // Reset player to clear GM ownership, then trigger Filterscript to register cross_amx_grp
-    SUI_ResetPlayer(playerid);
-    CallRemoteFunction("FS_SetupCrossAmx", "d", playerid);
+    g_o1_gm_create_calls++;
+    // Filterscript attempts to hijack owner_lock during callback
+    CallRemoteFunction("FS_TryHijackO1", "d", playerid);
     return 1;
 }
+forward OnO1_GM_Destroy(playerid);
+public OnO1_GM_Destroy(playerid) { return 1; }
+forward OnO1_GM_Show(playerid);
+public OnO1_GM_Show(playerid) { g_o1_gm_show_calls++; return 1; }
+forward OnO1_GM_Hide(playerid);
+public OnO1_GM_Hide(playerid) { return 1; }
+
+// -------------------------------------------------------------
+// RAG1 & RAG2 Callbacks
+// -------------------------------------------------------------
+new g_rag1_create_calls = 0;
+new g_rag1_rereg_result = -1;
+
+forward OnRAG1_Create(playerid);
+public OnRAG1_Create(playerid)
+{
+    g_rag1_create_calls++;
+    // Same owner attempts re-registration during callback WITHOUT prior removal
+    g_rag1_rereg_result = SUI_CreatePlayerFactoryGroup(playerid, "rag1_grp", "OnRAG1_NewC", "OnRAG1_NewD", "OnRAG1_NewS", "OnRAG1_NewH");
+    return 1;
+}
+forward OnRAG1_Destroy(playerid);
+public OnRAG1_Destroy(playerid) { return 1; }
+forward OnRAG1_Show(playerid);
+public OnRAG1_Show(playerid) { return 1; }
+forward OnRAG1_Hide(playerid);
+public OnRAG1_Hide(playerid) { return 1; }
+
+forward OnRAG1_NewC(playerid); public OnRAG1_NewC(playerid) { return 1; }
+forward OnRAG1_NewD(playerid); public OnRAG1_NewD(playerid) { return 1; }
+forward OnRAG1_NewS(playerid); public OnRAG1_NewS(playerid) { return 1; }
+forward OnRAG1_NewH(playerid); public OnRAG1_NewH(playerid) { return 1; }
+
+new g_rag2_create_calls = 0;
+
+forward OnRAG2_Create(playerid);
+public OnRAG2_Create(playerid)
+{
+    g_rag2_create_calls++;
+    // Different owner attempts takeover during callback
+    CallRemoteFunction("FS_TryHijackRAG2", "d", playerid);
+    return 1;
+}
+forward OnRAG2_Destroy(playerid);
+public OnRAG2_Destroy(playerid) { return 1; }
+forward OnRAG2_Show(playerid);
+public OnRAG2_Show(playerid) { return 1; }
+forward OnRAG2_Hide(playerid);
+public OnRAG2_Hide(playerid) { return 1; }
+
 
 // ----------------------------------------------------------------------------
 // Test Execution Pipeline
@@ -957,10 +1016,12 @@ public RunIdentityTests()
     g_h4_old_create_calls = 0;
     g_h4_new_create_calls = 0;
     g_h4_new_show_calls = 0;
+    g_h4_inplace_res = -1;
+    g_h4_repl_res = -1;
 
     SUI_CreatePlayerFactoryGroup(0, "h4_grp", "OnH4_OldCreate", "OnH4_OldDestroy", "OnH4_OldShow", "OnH4_OldHide");
     SUI_SetGroupSize(0, "h4_grp", 6);
-    SUI_ShowGroup(0, "h4_grp"); // triggers OnH4_OldCreate -> in-place replaces "h4_grp" WITHOUT ResetPlayer
+    SUI_ShowGroup(0, "h4_grp"); // OnH4_OldCreate: in-place rejected (0), reset + new generation created (1)
 
     new h4_mid_cr = SUI_IsGroupCreated(0, "h4_grp");
     new h4_mid_act = SUI_GetActiveTextDrawCount(0);
@@ -973,7 +1034,9 @@ public RunIdentityTests()
     SUI_DestroyGroup(0, "h4_grp");
     SUI_ResetPlayer(0);
 
-    if (g_h4_old_create_calls == 1 &&
+    if (g_h4_inplace_res == 0 &&
+        g_h4_repl_res == 1 &&
+        g_h4_old_create_calls == 1 &&
         g_h4_new_create_calls == 1 &&
         g_h4_new_show_calls == 1 &&
         h4_mid_cr == 0 &&
@@ -983,25 +1046,27 @@ public RunIdentityTests()
         h4_fin_act == 6)
     {
         g_h4_pass = 1;
-        print("[TEST-H4] PASS: New generation callback guard is clean and not stuck.");
+        print("[TEST-H4] PASS: In-place re-reg rejected; genuine replacement guard is clean.");
     }
     else
     {
-        printf("[TEST-H4] FAIL: old_c=%d new_c=%d new_s=%d mid_cr=%d mid_act=%d fin_cr=%d fin_vis=%d fin_act=%d",
-            g_h4_old_create_calls, g_h4_new_create_calls, g_h4_new_show_calls,
+        printf("[TEST-H4] FAIL: in_pl=%d repl=%d old_c=%d new_c=%d new_s=%d mid_cr=%d mid_act=%d fin_cr=%d fin_vis=%d fin_act=%d",
+            g_h4_inplace_res, g_h4_repl_res, g_h4_old_create_calls, g_h4_new_create_calls, g_h4_new_show_calls,
             h4_mid_cr, h4_mid_act, h4_fin_cr, h4_fin_vis, h4_fin_act);
     }
 
     // -------------------------------------------------------------
-    // ID-EVICT: Eviction Candidate In-Place ABA Replacement
+    // ID-EVICT: Eviction Candidate Genuine ABA Replacement
     // -------------------------------------------------------------
-    print("\n[TEST-ID-EVICT] Testing Eviction Candidate In-Place ABA Replacement...");
+    print("\n[TEST-ID-EVICT] Testing Eviction Candidate Genuine ABA Replacement...");
     SUI_ResetPlayer(0);
     SUI_SetMaxTextDraws(0, 256);
     SUI_SetEvictionThreshold(0, 200);
     g_idevict_cand_destroy_calls = 0;
     g_idevict_new_create_calls = 0;
     g_idevict_req_create_calls = 0;
+    g_idevict_inplace_res = -1;
+    g_idevict_repl_res = -1;
 
     // Register and show candidate group (size 50, priority LOW)
     SUI_CreatePlayerFactoryGroup(0, "evict_cand_grp", "OnIDEvict_CandCreate", "OnIDEvict_CandDestroy", "OnIDEvict_CandShow", "OnIDEvict_CandHide");
@@ -1014,7 +1079,7 @@ public RunIdentityTests()
     // Trigger eviction with group size 180 (50 + 180 = 230 > 200 threshold)
     SUI_CreatePlayerFactoryGroup(0, "evict_req_grp", "OnIDEvict_ReqCreate", "OnIDEvict_ReqDestroy", "OnIDEvict_ReqShow", "OnIDEvict_ReqHide");
     SUI_SetGroupSize(0, "evict_req_grp", 180);
-    SUI_ShowGroup(0, "evict_req_grp"); // Triggers EvictOneHiddenGroup -> OnIDEvict_CandDestroy -> in-place replaces evict_cand_grp (size 15, uncreated)
+    SUI_ShowGroup(0, "evict_req_grp"); // Triggers EvictOneHiddenGroup -> OnIDEvict_CandDestroy: in-place rejected, replaced after reset
 
     new evict_req_cr = SUI_IsGroupCreated(0, "evict_req_grp");
     new evict_cand_cr_mid = SUI_IsGroupCreated(0, "evict_cand_grp");
@@ -1030,7 +1095,9 @@ public RunIdentityTests()
     SUI_DestroyGroup(0, "evict_req_grp");
     SUI_ResetPlayer(0);
 
-    if (g_idevict_cand_destroy_calls == 1 &&
+    if (g_idevict_inplace_res == 0 &&
+        g_idevict_repl_res == 1 &&
+        g_idevict_cand_destroy_calls == 1 &&
         g_idevict_req_create_calls == 0 &&
         g_idevict_new_create_calls == 1 &&
         g_idevict_new_show_calls == 1 &&
@@ -1042,67 +1109,209 @@ public RunIdentityTests()
         evict_act_fin == 15)
     {
         g_id_evict_pass = 1;
-        print("[TEST-ID-EVICT] PASS: Eviction candidate in-place replacement preserved without corruption.");
+        print("[TEST-ID-EVICT] PASS: In-place rejected; genuine ABA replacement preserved without corruption.");
     }
     else
     {
-        printf("[TEST-ID-EVICT] FAIL: dest_c=%d req_c=%d new_c=%d new_s=%d req_cr=%d mid_cr=%d mid_act=%d fin_cr=%d fin_vis=%d fin_act=%d",
-            g_idevict_cand_destroy_calls, g_idevict_req_create_calls, g_idevict_new_create_calls, g_idevict_new_show_calls,
+        printf("[TEST-ID-EVICT] FAIL: in_pl=%d repl=%d dest_c=%d req_c=%d new_c=%d new_s=%d req_cr=%d mid_cr=%d mid_act=%d fin_cr=%d fin_vis=%d fin_act=%d",
+            g_idevict_inplace_res, g_idevict_repl_res, g_idevict_cand_destroy_calls, g_idevict_req_create_calls, g_idevict_new_create_calls, g_idevict_new_show_calls,
             evict_req_cr, evict_cand_cr_mid, evict_act_mid, evict_cand_cr_fin, evict_cand_vis_fin, evict_act_fin);
     }
 
     // -------------------------------------------------------------
-    // ID-CROSS-AMX: Strict Cross-AMX Replacement Isolation
+    // O1: Callback-Window Anti-Hijack
     // -------------------------------------------------------------
-    print("\n[TEST-ID-CROSS-AMX] Testing Strict Cross-AMX Replacement Isolation...");
+    print("\n[TEST-O1] Testing Callback-Window Anti-Hijack...");
     SUI_ResetPlayer(0);
-    g_cross_gm_destroy_calls = 0;
-    g_cross_gm_create_calls = 0;
-    g_cross_gm_show_calls = 0;
+    g_o1_gm_create_calls = 0;
+    g_o1_gm_show_calls = 0;
 
-    // Gamemode registers cross_amx_grp
-    SUI_CreatePlayerFactoryGroup(0, "cross_amx_grp", "OnCrossGM_Create", "OnCrossGM_Destroy", "OnCrossGM_Show", "OnCrossGM_Hide");
-    SUI_SetGroupSize(0, "cross_amx_grp", 10);
-    SUI_ShowGroup(0, "cross_amx_grp"); // GM create + show -> active = 10
+    SUI_CreatePlayerFactoryGroup(0, "owner_lock", "OnO1_GM_Create", "OnO1_GM_Destroy", "OnO1_GM_Show", "OnO1_GM_Hide");
+    SUI_SetGroupSize(0, "owner_lock", 4);
+    SUI_ShowGroup(0, "owner_lock"); // triggers OnO1_GM_Create -> FS_TryHijackO1
 
-    // Gamemode destroys cross_amx_grp -> OnCrossGM_Destroy resets and calls FS_SetupCrossAmx
-    SUI_DestroyGroup(0, "cross_amx_grp");
+    new o1_hijack_res = CallRemoteFunction("FS_GetO1HijackResult", "");
+    new o1_cr = SUI_IsGroupCreated(0, "owner_lock");
+    new o1_vis = SUI_IsGroupVisible(0, "owner_lock");
+    new o1_act = SUI_GetActiveTextDrawCount(0); // 4
 
-    // After GM destroy returns, Filterscript's group exists
-    new cross_mid_cr = SUI_IsGroupCreated(0, "cross_amx_grp");
-    new cross_mid_act = SUI_GetActiveTextDrawCount(0);
+    new fs_o1_c = CallRemoteFunction("FS_GetO1CreateCalls", "");
+    new fs_o1_s = CallRemoteFunction("FS_GetO1ShowCalls", "");
 
-    // Show cross_amx_grp -> must dispatch to Filterscript callbacks!
-    SUI_ShowGroup(0, "cross_amx_grp");
-    new cross_fin_cr = SUI_IsGroupCreated(0, "cross_amx_grp");
-    new cross_fin_vis = SUI_IsGroupVisible(0, "cross_amx_grp");
-    new cross_fin_act = SUI_GetActiveTextDrawCount(0); // 8
-
-    new fs_create_calls = CallRemoteFunction("FS_GetCrossCreateCalls", "");
-    new fs_show_calls = CallRemoteFunction("FS_GetCrossShowCalls", "");
-
-    SUI_DestroyGroup(0, "cross_amx_grp");
+    SUI_DestroyGroup(0, "owner_lock");
+    new o1_act_post = SUI_GetActiveTextDrawCount(0); // 0
     SUI_ResetPlayer(0);
 
-    if (g_cross_gm_destroy_calls == 1 &&
-        g_cross_gm_create_calls == 1 &&
-        g_cross_gm_show_calls == 1 &&
-        cross_mid_cr == 0 &&
-        cross_mid_act == 0 &&
-        cross_fin_cr == 1 &&
-        cross_fin_vis == 1 &&
-        cross_fin_act == 8 &&
-        fs_create_calls == 1 &&
-        fs_show_calls == 1)
+    if (o1_hijack_res == 0 &&
+        g_o1_gm_create_calls == 1 &&
+        g_o1_gm_show_calls == 1 &&
+        o1_cr == 1 &&
+        o1_vis == 1 &&
+        o1_act == 4 &&
+        o1_act_post == 0 &&
+        fs_o1_c == 0 &&
+        fs_o1_s == 0)
     {
-        g_id_cross_amx_pass = 1;
-        print("[TEST-ID-CROSS-AMX] PASS: Cross-AMX replacement isolated and dispatched to new owner.");
+        g_o1_pass = 1;
+        print("[TEST-O1] PASS: Callback-window hijack rejected (0); GM owns group; FS never executes.");
     }
     else
     {
-        printf("[TEST-ID-CROSS-AMX] FAIL: gm_d=%d gm_c=%d gm_s=%d mid_cr=%d mid_act=%d fin_cr=%d fin_act=%d fs_c=%d fs_s=%d",
-            g_cross_gm_destroy_calls, g_cross_gm_create_calls, g_cross_gm_show_calls,
-            cross_mid_cr, cross_mid_act, cross_fin_cr, cross_fin_act, fs_create_calls, fs_show_calls);
+        printf("[TEST-O1] FAIL: hijack_res=%d gm_c=%d gm_s=%d cr=%d vis=%d act=%d post_act=%d fs_c=%d fs_s=%d",
+            o1_hijack_res, g_o1_gm_create_calls, g_o1_gm_show_calls, o1_cr, o1_vis, o1_act, o1_act_post, fs_o1_c, fs_o1_s);
+    }
+
+    // -------------------------------------------------------------
+    // O2: Legitimate Cross-AMX Reuse After Removal
+    // -------------------------------------------------------------
+    print("\n[TEST-O2] Testing Legitimate Cross-AMX Reuse After Removal...");
+    SUI_ResetPlayer(0);
+
+    // Gamemode registers and shows owner_reuse
+    SUI_CreatePlayerFactoryGroup(0, "owner_reuse", "OnO1_GM_Create", "OnO1_GM_Destroy", "OnO1_GM_Show", "OnO1_GM_Hide");
+    SUI_SetGroupSize(0, "owner_reuse", 5);
+    SUI_ShowGroup(0, "owner_reuse");
+    SUI_DestroyGroup(0, "owner_reuse");
+    SUI_ResetPlayer(0); // fully removed from SUI tracking
+
+    // Filterscript registers owner_reuse
+    new fs_o2_setup_res = CallRemoteFunction("FS_SetupReuseO2", "d", 0);
+    new fs_o2_show_res = CallRemoteFunction("FS_ShowReuseO2", "d", 0);
+
+    new o2_cr = SUI_IsGroupCreated(0, "owner_reuse");
+    new o2_vis = SUI_IsGroupVisible(0, "owner_reuse");
+    new o2_act = SUI_GetActiveTextDrawCount(0); // 8
+
+    new fs_o2_c = CallRemoteFunction("FS_GetO2CreateCalls", "");
+    new fs_o2_s = CallRemoteFunction("FS_GetO2ShowCalls", "");
+
+    CallRemoteFunction("FS_DestroyReuseO2", "d", 0);
+    new o2_act_post = SUI_GetActiveTextDrawCount(0); // 0
+    SUI_ResetPlayer(0);
+
+    if (fs_o2_setup_res == 1 &&
+        fs_o2_show_res == 1 &&
+        o2_cr == 1 &&
+        o2_vis == 1 &&
+        o2_act == 8 &&
+        o2_act_post == 0 &&
+        fs_o2_c == 1 &&
+        fs_o2_s == 1)
+    {
+        g_o2_pass = 1;
+        print("[TEST-O2] PASS: Legitimate cross-AMX reuse after removal succeeded with new owner.");
+    }
+    else
+    {
+        printf("[TEST-O2] FAIL: setup_res=%d show_res=%d cr=%d vis=%d act=%d post_act=%d fs_c=%d fs_s=%d",
+            fs_o2_setup_res, fs_o2_show_res, o2_cr, o2_vis, o2_act, o2_act_post, fs_o2_c, fs_o2_s);
+    }
+
+    // -------------------------------------------------------------
+    // RAG1: Same-Owner Callback Re-registration Rejected
+    // -------------------------------------------------------------
+    print("\n[TEST-RAG1] Testing Resource Accounting: Same-Owner Callback Re-reg Rejected...");
+    SUI_ResetPlayer(0);
+    g_rag1_create_calls = 0;
+    g_rag1_rereg_result = -1;
+
+    SUI_CreatePlayerFactoryGroup(0, "rag1_grp", "OnRAG1_Create", "OnRAG1_Destroy", "OnRAG1_Show", "OnRAG1_Hide");
+    SUI_SetGroupSize(0, "rag1_grp", 5);
+    SUI_ShowGroup(0, "rag1_grp"); // OnRAG1_Create attempts re-registration
+
+    new rag1_cr_mid = SUI_IsGroupCreated(0, "rag1_grp");
+    new rag1_vis_mid = SUI_IsGroupVisible(0, "rag1_grp");
+    new rag1_act_mid = SUI_GetActiveTextDrawCount(0); // 5
+
+    SUI_DestroyGroup(0, "rag1_grp");
+    new rag1_act_post = SUI_GetActiveTextDrawCount(0); // 0
+    SUI_ResetPlayer(0);
+
+    if (g_rag1_rereg_result == 0 &&
+        g_rag1_create_calls == 1 &&
+        rag1_cr_mid == 1 &&
+        rag1_vis_mid == 1 &&
+        rag1_act_mid == 5 &&
+        rag1_act_post == 0)
+    {
+        g_rag1_pass = 1;
+        print("[TEST-RAG1] PASS: Same-owner re-reg during callback rejected (0); capacity conserved (5 -> 0).");
+    }
+    else
+    {
+        printf("[TEST-RAG1] FAIL: rereg_res=%d calls=%d cr=%d vis=%d act=%d post_act=%d",
+            g_rag1_rereg_result, g_rag1_create_calls, rag1_cr_mid, rag1_vis_mid, rag1_act_mid, rag1_act_post);
+    }
+
+    // -------------------------------------------------------------
+    // RAG2: Cross-AMX Hijack During Callback Rejected
+    // -------------------------------------------------------------
+    print("\n[TEST-RAG2] Testing Resource Accounting: Cross-AMX Hijack During Callback Rejected...");
+    SUI_ResetPlayer(0);
+    g_rag2_create_calls = 0;
+
+    SUI_CreatePlayerFactoryGroup(0, "rag2_grp", "OnRAG2_Create", "OnRAG2_Destroy", "OnRAG2_Show", "OnRAG2_Hide");
+    SUI_SetGroupSize(0, "rag2_grp", 5);
+    SUI_ShowGroup(0, "rag2_grp"); // OnRAG2_Create triggers FS_TryHijackRAG2
+
+    new rag2_hijack_res = CallRemoteFunction("FS_GetRAG2HijackResult", "");
+    new rag2_cr_mid = SUI_IsGroupCreated(0, "rag2_grp");
+    new rag2_vis_mid = SUI_IsGroupVisible(0, "rag2_grp");
+    new rag2_act_mid = SUI_GetActiveTextDrawCount(0); // 5
+
+    SUI_DestroyGroup(0, "rag2_grp");
+    new rag2_act_post = SUI_GetActiveTextDrawCount(0); // 0
+    SUI_ResetPlayer(0);
+
+    if (rag2_hijack_res == 0 &&
+        g_rag2_create_calls == 1 &&
+        rag2_cr_mid == 1 &&
+        rag2_vis_mid == 1 &&
+        rag2_act_mid == 5 &&
+        rag2_act_post == 0)
+    {
+        g_rag2_pass = 1;
+        print("[TEST-RAG2] PASS: Cross-AMX hijack during callback rejected (0); capacity conserved (5 -> 0).");
+    }
+    else
+    {
+        printf("[TEST-RAG2] FAIL: hijack_res=%d calls=%d cr=%d vis=%d act=%d post_act=%d",
+            rag2_hijack_res, g_rag2_create_calls, rag2_cr_mid, rag2_vis_mid, rag2_act_mid, rag2_act_post);
+    }
+
+    // -------------------------------------------------------------
+    // RAG3: Legitimate Replacement Resource Accounting Reuse
+    // -------------------------------------------------------------
+    print("\n[TEST-RAG3] Testing Resource Accounting: Legitimate Replacement Resource Reuse...");
+    SUI_ResetPlayer(0);
+    new rag3_act_init = SUI_GetActiveTextDrawCount(0); // 0
+
+    new rag3_reg_res = SUI_CreatePlayerFactoryGroup(0, "rag3_grp", "OnRAG1_Create", "OnRAG1_Destroy", "OnRAG1_Show", "OnRAG1_Hide");
+    SUI_SetGroupSize(0, "rag3_grp", 7);
+    SUI_ShowGroup(0, "rag3_grp");
+
+    new rag3_cr = SUI_IsGroupCreated(0, "rag3_grp");
+    new rag3_vis = SUI_IsGroupVisible(0, "rag3_grp");
+    new rag3_act_shown = SUI_GetActiveTextDrawCount(0); // 7
+
+    SUI_DestroyGroup(0, "rag3_grp");
+    new rag3_act_post = SUI_GetActiveTextDrawCount(0); // 0
+    SUI_ResetPlayer(0);
+
+    if (rag3_act_init == 0 &&
+        rag3_reg_res == 1 &&
+        rag3_cr == 1 &&
+        rag3_vis == 1 &&
+        rag3_act_shown == 7 &&
+        rag3_act_post == 0)
+    {
+        g_rag3_pass = 1;
+        print("[TEST-RAG3] PASS: Legitimate replacement resource accounting clean (0 -> 7 -> 0).");
+    }
+    else
+    {
+        printf("[TEST-RAG3] FAIL: init=%d reg=%d cr=%d vis=%d shown=%d post=%d",
+            rag3_act_init, rag3_reg_res, rag3_cr, rag3_vis, rag3_act_shown, rag3_act_post);
     }
 
     // -------------------------------------------------------------
@@ -1197,24 +1406,40 @@ public PrintIdentityResults()
     print("----------------------------------------------------------------");
     print("      SUI-017 EXTENDED ABA ACCEPTANCE SCENARIOS                 ");
     print("----------------------------------------------------------------");
-    if (g_id_evict_pass) printf("ID-EVICT     (In-Place Eviction Replacement): PASS");
-    else printf("ID-EVICT     (In-Place Eviction Replacement): FAIL");
-    if (g_id_cross_amx_pass) printf("ID-CROSS-AMX (Cross-AMX Group Replacement):   PASS");
-    else printf("ID-CROSS-AMX (Cross-AMX Group Replacement):   FAIL");
+    if (g_id_evict_pass) printf("ID-EVICT     (Eviction ABA Candidate Replace): PASS");
+    else printf("ID-EVICT     (Eviction ABA Candidate Replace): FAIL");
+    print("----------------------------------------------------------------");
+    print("      SUI-002 / SUI-017 OWNERSHIP & ANTI-HIJACK (O1-O2)         ");
+    print("----------------------------------------------------------------");
+    if (g_o1_pass) printf("O1   (Callback-Window Anti-Hijack Guard):   PASS");
+    else printf("O1   (Callback-Window Anti-Hijack Guard):   FAIL");
+    if (g_o2_pass) printf("O2   (Legitimate Cross-AMX Group Reuse):    PASS");
+    else printf("O2   (Legitimate Cross-AMX Group Reuse):    FAIL");
+    print("----------------------------------------------------------------");
+    print("      RESOURCE ACCOUNTING GATE TESTS (RAG1-RAG3)                ");
+    print("----------------------------------------------------------------");
+    if (g_rag1_pass) printf("RAG1 (Same-Owner Re-reg Rejected / Conserved):PASS");
+    else printf("RAG1 (Same-Owner Re-reg Rejected / Conserved):FAIL");
+    if (g_rag2_pass) printf("RAG2 (Cross-AMX Hijack Rejected / Conserved): PASS");
+    else printf("RAG2 (Cross-AMX Hijack Rejected / Conserved): FAIL");
+    if (g_rag3_pass) printf("RAG3 (Legitimate Replacement Accounting):     PASS");
+    else printf("RAG3 (Legitimate Replacement Accounting):     FAIL");
     print("================================================================");
 
     new total_pass = g_id1_pass + g_id2_pass + g_id3_pass + g_id4_pass + g_id5_pass +
                      g_id6_pass + g_id7_pass + g_id8_pass + g_id9_pass + g_id10_pass +
                      g_h1_pass + g_h2_pass + g_h3_pass + g_h4_pass +
-                     g_id_evict_pass + g_id_cross_amx_pass;
+                     g_id_evict_pass +
+                     g_o1_pass + g_o2_pass +
+                     g_rag1_pass + g_rag2_pass + g_rag3_pass;
 
-    if (total_pass == 16)
+    if (total_pass == 20)
     {
-        print("OVERALL RESULT: ALL GROUP IDENTITY & LIFECYCLE TESTS PASSED! (16/16)");
+        print("OVERALL RESULT: ALL GROUP IDENTITY, LIFECYCLE & OWNERSHIP TESTS PASSED! (20/20)");
     }
     else
     {
-        printf("OVERALL RESULT: %d/16 TESTS PASSED.", total_pass);
+        printf("OVERALL RESULT: %d/20 TESTS PASSED.", total_pass);
     }
     print("================================================================\n");
 }

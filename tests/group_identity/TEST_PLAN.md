@@ -89,18 +89,39 @@ The test suite consists of two scripts running on a live SA-MP 0.3.7 server:
 - **Verification**: `cbHide` was called during hide, `cbDestroy` is called during destroy. `activeTextDrawCount` transitions 5 -> 0 without duplicate subtraction.
 
 ### H4: Replacement Callback Guard Ownership
-- **Mechanism**: Group `"h4_grp"` is registered and shown. In `OnH4_OldCreate`, `"h4_grp"` is re-registered in-place WITHOUT resetting the player (`SUI_CreatePlayerFactoryGroup` called directly during callback).
-- **Verification**: New generation receives a fresh `instanceId` and clean initial state with `isExecutingCallback == false`. When outer `ShowGroup` on the old generation returns, it aborts due to instance mismatch without touching the new group. Subsequent explicit `SUI_ShowGroup` on `"h4_grp"` executes normally, proving the callback guard is not stuck.
+- **Mechanism**: Group `"h4_grp"` is registered and shown. In `OnH4_OldCreate`, `"h4_grp"` attempts in-place re-registration WITHOUT resetting player (rejected with 0), then calls `SUI_ResetPlayer` and registers a clean new generation of `"h4_grp"` (size 6).
+- **Verification**: In-place re-registration is rejected. Genuine replacement receives fresh `instanceId` and clean initial state with `isExecutingCallback == false`. When outer `ShowGroup` returns, it safely aborts. Subsequent explicit `SUI_ShowGroup` executes cleanly with capacity 6, proving the callback guard is not stuck.
 
 ---
 
-## 5. Phase 6.1 Extended ABA Acceptance Specifications
+## 5. Phase 6.2 Extended ABA & Ownership Acceptance Specifications
 
-### ID-EVICT: Eviction Candidate In-Place ABA Replacement
-- **Mechanism**: Hidden candidate `"evict_cand_grp"` (size 50, priority LOW) is selected for eviction when a new group `"evict_req_grp"` (size 180) is shown under threshold 200. In candidate's `cbDestroy`, it re-registers `"evict_cand_grp"` in-place (size 15, uncreated) without resetting the player.
-- **Verification**: Outer eviction detects candidate replacement and aborts without erasing the new generation or subtracting its capacity. Requesting group fails capacity cleanly (`req_cr == 0`). Replacement group exists uncreated, and can subsequently be created and shown (`activeTD` reaches 15).
+### ID-EVICT: Eviction Candidate Genuine ABA Replacement
+- **Mechanism**: Hidden candidate `"evict_cand_grp"` (size 50, priority LOW) is selected for eviction when `"evict_req_grp"` (size 180) is shown under threshold 200. In candidate's `cbDestroy`, it attempts in-place re-registration (rejected with 0), then calls `SUI_ResetPlayer` and registers replacement `"evict_cand_grp"` (size 15, uncreated).
+- **Verification**: Outer eviction detects candidate replacement and aborts without erasing the new generation. Requesting group fails capacity cleanly (`req_cr == 0`). Replacement group exists uncreated, and can subsequently be created and shown (`activeTD` reaches 15).
 
-### ID-CROSS-AMX: Strict Cross-AMX Replacement Isolation
-- **Mechanism**: Gamemode registers `"cross_amx_grp"` (size 10) and shows it. Gamemode destroys it. In `OnCrossGM_Destroy`, Gamemode resets the player and calls `FS_SetupCrossAmx` in Filterscript to register `"cross_amx_grp"` (size 8).
-- **Verification**: Gamemode outer destroy aborts due to instance mismatch. Filterscript's group exists and subsequent `SUI_ShowGroup` dispatches exclusively to Filterscript callbacks, verifying cross-AMX isolation.
+### O1: Callback-Window Anti-Hijack
+- **Mechanism**: Gamemode registers `"owner_lock"` (size 4) and calls `SUI_ShowGroup`. While Gamemode callback `OnO1_GM_Create` is actively executing, Filterscript calls `SUI_CreatePlayerFactoryGroup` attempting to register `"owner_lock"`.
+- **Verification**: Filterscript registration returns 0. Gamemode retains ownership, outer transaction completes cleanly (`owner_lock` created and visible, active textdraw count = 4), and Filterscript callbacks are never invoked. Destroy returns active count to 0.
+
+### O2: Legitimate Cross-AMX Group Reuse After Removal
+- **Mechanism**: Gamemode registers `"owner_reuse"` (size 5), shows it, and destroys + resets player so it is fully removed from SUI tracking. Filterscript then registers `"owner_reuse"` (size 8) and shows it.
+- **Verification**: Filterscript registration succeeds (returns 1). Filterscript callbacks execute exclusively (`FS_OnO2_Create == 1`, `FS_OnO2_Show == 1`). Active count becomes 8. Destroying group returns active count to 0.
+
+---
+
+## 6. Resource Accounting Gate Specifications (RAG1-RAG3)
+
+### RAG1: Same-Owner Callback Re-registration Rejected
+- **Mechanism**: Created group `"rag1_grp"` (size 5). During its creation callback, the same owner attempts to re-register `"rag1_grp"` without prior removal.
+- **Verification**: Re-registration returns 0. Old group remains created and visible with active count 5. Normal destruction cleanly decrements active count to 0 with zero phantom capacity release.
+
+### RAG2: Cross-AMX Hijack During Callback Rejected
+- **Mechanism**: Created group `"rag2_grp"` (size 5). During its creation callback, a different AMX (Filterscript) attempts to register `"rag2_grp"`.
+- **Verification**: Hijack registration returns 0. Group remains owned by Gamemode with active count 5. Normal destruction returns active count to 0.
+
+### RAG3: Legitimate Replacement Resource Accounting Reuse
+- **Mechanism**: After player reset (`activeTextDrawCount == 0`), a new group `"rag3_grp"` (size 7) is registered and shown.
+- **Verification**: Registration returns 1, show increments active count to 7, and destruction cleanly drops active count to 0.
+
 

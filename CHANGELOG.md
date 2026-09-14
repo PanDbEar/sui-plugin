@@ -7,14 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **SUI-017 / SUI-002 (Integration Gate Phase 6.2)**: Preserved AMX ownership immutability across lifecycle generation changes and reconciled same-name group replacement semantics. Status: `FIXED — runtime regression verified`.
+  - Established architectural separation: *instance identity protects lifecycle generations*, while *owner AMX protects script isolation*. Generation change does NOT authorize owner transfer.
+  - In `SUICore::RegisterFactoryGroup`, strictly rejected re-registration during active callback execution (`isExecutingCallback == true`) for both same-owner and cross-owner callers (`return false`), eliminating mid-callback state corruption, callback-window takeover, and phantom capacity decrements.
+  - Enforced genuine removal requirement (via `ResetPlayer`, `CleanupPlayer`, or `DestroyGroup`) before a new generation can be registered under an existing name. Genuine replacement receives a fresh monotonic `instanceId` and clean default state.
+  - Enforced atomic monotonic `instanceId` allocation: `TryAllocateGroupInstanceId` validates and allocates FIRST before modifying any container or player context state. 64-bit counter exhaustion (`nextGroupInstanceId == 0`) returns `false` without state mutation.
+  - Added Test A7 (Anti-Hijack Guard During Callback Execution) to permanent SUI-002 ownership suite (`tests/amx_ownership/`) with 7/7 passing assertions.
+  - Added O1 (Callback-Window Anti-Hijack), O2 (Legitimate Cross-AMX Reuse After Removal), and RAG1–RAG3 (Resource Accounting Gate) to group identity suite (`tests/group_identity/`) with 20/20 passing assertions.
+  - Verified 66/66 total test assertions passing across all suites on live 32-bit Linux SA-MP dedicated server (`samp03svr`) with zero crashes, no observed memory corruption, and no accounting drift.
 - **SUI-017**: Hardened group lifecycle transactions against re-entrant group replacement and ABA identity confusion across Pawn callbacks. Status: `FIXED — runtime regression verified`.
   - Added unique 64-bit monotonic `uint64_t instanceId` to `SUIGroup` allocated via `SUICore::TryAllocateGroupInstanceId()`. Wrap detection refuses allocation on 64-bit exhaustion (`nextGroupInstanceId == 0`), guaranteeing instance IDs are never recycled.
   - Implemented `SUICore::GetPlayerGroupIfInstance(playerId, groupName, instanceId)` to enforce strict lifecycle generation matching (`same name != same group`).
-  - Allocated new generation `instanceId` in `RegisterFactoryGroup` upon initial registration or whenever a group is replaced during an in-flight callback (`isExecutingCallback == true`), reconciling created capacity and initializing clean default state (`isCreated = false`, `isVisible = false`, `isExecutingCallback = false`).
   - Audited and secured all 7 callback boundaries across `ShowGroup`, `HideGroup`, `DestroyGroupInternal`, `EvictOneHiddenGroup`, and `ProcessTick` using transaction snapshots (`instanceId`) and post-callback generation verification. Outer operations abort immediately upon generation mismatch without mutating replacement state or prematurely resetting its callback guard.
   - Hardened multi-target lifecycle operations (`CleanupPlayer`, `ResetPlayer`) to snapshot `{groupName, instanceId}` tuples, preventing duplicate or mismatched destructions.
   - Reconciled lifecycle accounting: verified created-capacity preservation on `HideGroup` (H1) and exact single subtraction on destroy (H2, H3).
-  - Verified live runtime regression suite (`tests/group_identity/`) with 16/16 test scenarios passing (ID1–ID10, H1–H4, ID-EVICT, ID-CROSS-AMX) on a 32-bit Linux SA-MP dedicated server (`samp03svr`).
 - **SUI-004**: Hardened capacity accounting and arithmetic invariants against overflow, underflow, and callback size mutation. Status: `FIXED — runtime regression verified`.
   - Converted capacity evaluation in `EnsureCapacity` to 64-bit widened space (`(uint64_t)active + (uint64_t)required <= (uint64_t)threshold && total <= (uint64_t)max`), eliminating unsigned 32-bit addition wrap-around to zero.
   - Enforced `maxTextDraws` as a strict hard capacity ceiling in `SUICore::TryAddActiveTextDrawCount` and `EnsureCapacity`, failing addition and rejecting group creation without mutating accounting if projected count exceeds `maxTextDraws`.

@@ -308,14 +308,33 @@ Furthermore, string parameters were retrieved via an unchecked `GetStringParam` 
 #### Mechanism
 Group names are addressable string keys within `PlayerContext::groups`, not unique object identities. When an outer lifecycle operation invokes a Pawn callback, arbitrary script code can destroy, reset, or replace that group under the exact same name. Upon returning from the callback, reacquiring the group purely by name reacquired the replacement generation (an ABA identity collision). The outer transaction would then erroneously mutate replacement state, clear re-entrancy mutex flags, or debit/credit capacity against the wrong lifetime. Raw pointer addresses could not serve as identity because `std::unordered_map` bucket node allocation reuses freed memory addresses.
 
-#### Phase 6 & 6.1 Remediation (Resolved)
+#### Phase 6 & 6.1 Remediation (Initial)
 - Added a private, non-Pawn-visible 64-bit `uint64_t instanceId = 0` to `SUIGroup` with monotonic plugin-lifetime allocation via `SUICore::TryAllocateGroupInstanceId()`. Counter wrap detection strictly refuses allocation on 64-bit exhaustion (`nextGroupInstanceId == 0`), guaranteeing instance IDs are never recycled.
-- In `SUICore::RegisterFactoryGroup`, assigned a new `instanceId` upon initial insertion, if `instanceId == 0`, or if re-registration occurs while the group is actively executing a callback (`isExecutingCallback == true`).
-- When an in-flight callback group is replaced, `RegisterFactoryGroup` reconciles capacity if the replaced generation was created (`SubtractActiveTextDrawCount`), and initializes the replacement with clean default state (`isCreated = false`, `isVisible = false`, `isExecutingCallback = false`), ensuring the new generation is never callback-locked. Outside callbacks, benign re-registrations preserve existing `instanceId` and group properties.
-- Implemented helper `SUICore::GetPlayerGroupIfInstance(playerId, groupName, instanceId)`.
 - Enforced post-callback identity verification across all 7 callback boundaries in `ShowGroup`, `HideGroup`, `DestroyGroupInternal`, `EvictOneHiddenGroup`, and `ProcessTick`. Stale operations immediately abort upon identity mismatch without mutating replacement state or corrupting capacity accounting.
 - Updated `CleanupPlayer` and `ResetPlayer` snapshots to preserve `{groupName, instanceId}` tuples. Note that while generation-aware snapshots prevent operating on replacement groups during teardown loops, final `players.erase(playerId)` semantics remain categorized under SUI-005.
-- Verified across 16 live server test scenarios (ID1–ID10, H1–H4, ID-EVICT, ID-CROSS-AMX) with 0 crashes, 0 capacity drift across 100 rapid replacement cycles, and 100% test pass rate.
+
+---
+
+### 3.12. HIGH: SUI-017 / SUI-002 Ownership Immutability & Safe Same-Name Replacement Integration Gate (Phase 6.2)
+
+**Location:** `src/Core.cpp:295-365`, `tests/amx_ownership/`, `tests/group_identity/`.
+
+#### Mechanism & Conflict Identification
+Phase 6 / 6.1 introduced generation tracking but permitted in-place replacement during `isExecutingCallback == true`, allowing `pGroup.ownerAmx = amx` to be reassigned during an active callback. This introduced a direct conflict with SUI-002 ownership immutability:
+1. **Callback-Window Hijacking**: A different AMX script could invoke `SUI_CreatePlayerFactoryGroup` during another script's callback and take over group ownership.
+2. **Phantom Capacity Subtraction**: Calling `SubtractActiveTextDrawCount` on an in-flight replacement group without genuine destruction subtracted capacity prematurely while external SA-MP UI handles remained allocated in the server.
+
+#### Phase 6.2 Remediation (Resolved)
+- **Strict Separation of Invariants**: Established that *instance identity protects lifecycle generations*, while *owner AMX protects script isolation*. A generation change does NOT authorize owner transfer.
+- **Callback-Window Re-Registration Rejected**: `SUICore::RegisterFactoryGroup` strictly rejects re-registration when `isExecutingCallback == true` (`return false`) for both same-owner and cross-owner attempts.
+- **Genuine Removal Requirement**: Group replacement under the same name requires genuine removal (via `ResetPlayer`, `CleanupPlayer`, or `DestroyGroup`) before re-registration.
+- **Cross-AMX Reuse After Removal**: A group name can only be acquired by a different AMX after the old group has been genuinely removed from SUI state.
+- **Validate First, Commit Second**: `TryAllocateGroupInstanceId` allocates a fresh `instanceId` before any container modification or entry creation. Counter wrap (`nextGroupInstanceId == 0`) returns `false` without partial state mutation.
+- **Runtime Verification**:
+  - Test A7 (Anti-hijack during callback): PASS (7/7 in `amx_ownership`).
+  - Tests O1 & O2 (Anti-hijack & legitimate cross-AMX reuse): PASS.
+  - Tests RAG1–RAG3 (Resource accounting preservation & safe reuse): PASS.
+  - Complete regression suite (66/66 assertions) PASS with 0 crashes, no observed memory corruption, and no accounting drift.
 
 ---
 
@@ -334,6 +353,7 @@ Group names are addressable string keys within `PlayerContext::groups`, not uniq
 | **3.9** | Unsafe Pawn parameter validation and signed/unsigned conversion (SUI-003) | **HIGH** | Phase 4 (Resolved) |
 | **3.10** | Capacity arithmetic overflow and accounting invariant safety (SUI-004) | **MEDIUM** | Phase 5 (Resolved) |
 | **3.11** | Re-entrant group replacement / generation identity confusion (SUI-017) | **HIGH** | Phase 6 (Resolved) |
+| **3.12** | SUI-017 / SUI-002 ownership immutability & safe replacement integration gate | **HIGH** | Phase 6.2 (Resolved) |
 
 ---
 
@@ -345,6 +365,7 @@ Group names are addressable string keys within `PlayerContext::groups`, not uniq
 4. **Phase 4 (SUI-003)**: Hardened Pawn native input validation, bounds checking, and memory safety.
 5. **Phase 5 (SUI-004)**: Hardened capacity arithmetic, overflow prevention, and accounting invariants.
 6. **Phase 6 (SUI-017)**: Implemented monotonic group instance generations, ABA identity resolution, and lifecycle transaction safety.
-7. **Phase 7 (SUI-006)**: Decouple callback return semantics from state transition success.
+7. **Phase 6.2 (Gate)**: Reconciled SUI-017 generation identity with SUI-002 ownership immutability and genuine removal semantics.
+8. **Phase 7 (SUI-006)**: Decouple callback return semantics from state transition success.
 
 

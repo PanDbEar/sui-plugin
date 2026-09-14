@@ -49,10 +49,10 @@
 - **Severity:** High
 - **Area:** AMX / Dispatch
 - **Status:** FIXED — runtime multi-AMX regression verified
-- **Fix Summary:** Group registration now binds `SUIGroup::ownerAmx` to the originating script's `AMX*`. Callbacks dispatch strictly to `ownerAmx` without falling back to other scripts. `UnloadAmx` purges registered groups and repairs active capacity when a script unloads.
-- **Runtime Verification:** Verified across A1–A6 live scenarios inside 32-bit Linux SA-MP dedicated server (`samp03svr`).
-- **Evidence:** `src/Core.hpp:35`, `src/Core.cpp:55-95, 1225-1260`, `tests/amx_ownership/`.
-- **Planned phase:** Phase 3
+- **Fix Summary:** Group registration binds `SUIGroup::ownerAmx` to the originating script's `AMX*`. Callbacks dispatch strictly to `ownerAmx` without falling back to other scripts. Re-registration by any different AMX while a group exists is strictly rejected, and callback-window hijacking is completely blocked. `UnloadAmx` purges registered groups and repairs active capacity when a script unloads.
+- **Runtime Verification:** Verified across A1–A7 live scenarios inside 32-bit Linux SA-MP dedicated server (`samp03svr`) (7/7 passing).
+- **Evidence:** `src/Core.hpp:35`, `src/Core.cpp:55-95, 295-335, 1225-1260`, `tests/amx_ownership/`.
+- **Planned phase:** Phase 3 / Phase 6.2 (Hardened)
 
 ---
 
@@ -249,13 +249,15 @@
 - **Fix Summary:**
   - Added a private, internal 64-bit `instanceId` field to `struct SUIGroup` (non-Pawn-visible). `0` represents uninitialized/invalid.
   - Implemented a plugin-lifetime monotonic counter `SUICore::nextGroupInstanceId = 1` and allocator `SUICore::TryAllocateGroupInstanceId()`. Wrap detection refuses allocation on 64-bit exhaustion (`nextGroupInstanceId == 0`), guaranteeing IDs are never recycled.
-  - In `SUICore::RegisterFactoryGroup`, allocated a new monotonic `instanceId` upon initial insertion (`it == ctx.groups.end()`), if `instanceId == 0`, or if re-registration occurs while the existing group is actively executing a callback (`isExecutingCallback == true`). Duplicate registrations outside callbacks retain their existing `instanceId` and state to support benign callback string updates.
-  - When replacing an in-flight callback group, `RegisterFactoryGroup` reconciles capacity if the replaced generation was created (`SubtractActiveTextDrawCount`), and initializes the new generation with clean default state (`isCreated = false`, `isVisible = false`, `isExecutingCallback = false`), ensuring the new generation is never callback-locked.
+  - In `SUICore::RegisterFactoryGroup`, validated and allocated fresh `instanceId` FIRST before mutating any state. Re-registration during active callback execution (`isExecutingCallback == true`) is strictly REJECTED (`return false`) for both same-owner and cross-owner, eliminating mid-callback state corruption and phantom capacity decrements.
+  - Required genuine removal (via `ResetPlayer`, `CleanupPlayer`, or `DestroyGroup`) before a new generation can be registered under the same name. Genuine replacement receives a fresh monotonic `instanceId` and clean default state (`isCreated = false`, `isVisible = false`, `isExecutingCallback = false`).
+  - Outside callbacks, benign re-registrations by the same owner update callback strings while preserving existing `instanceId` and group state.
+  - Cross-AMX takeover while a group exists is strictly rejected; cross-AMX reuse is permitted only after the previous group is genuinely removed from SUI state.
   - Implemented lookup helper `SUICore::GetPlayerGroupIfInstance(playerId, groupName, instanceId)` enforcing `same name ≠ same group` unless `instanceId` also matches.
   - Audited all 7 callback boundaries across `ShowGroup` (create and show boundaries), `HideGroup` (hide boundary), `DestroyGroupInternal` (hide and destroy boundaries), `EvictOneHiddenGroup` (eviction destroy boundary), and `ProcessTick` (idle destroy boundary): outer transactions capture `instanceId`, re-verify matching identity after each callback, and immediately abort if the instance changed or was removed.
   - Aborted transactions never clear `isExecutingCallback` on replacement instances, never mutate replacement creation or visibility flags, never invoke stale subsequent callbacks, and never add or subtract accounting against replacement generations.
   - Updated `CleanupPlayer` and `ResetPlayer` candidate snapshots to record `{groupName, instanceId}` tuples, preventing identity confusion during batch group destruction (while final player context erasure semantics remain categorized under SUI-005).
-- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/group_identity/group_identity.pwn` with filterscript `group_identity_filterscript.pwn` across scenarios ID1 through ID10, lifecycle reconciliation suite H1 through H4, and extended ABA scenarios ID-EVICT and ID-CROSS-AMX. All 16 scenarios passed with 0 crashes, 0 memory corruption, and zero accounting drift across 100 rapid replacement cycles. Verified zero regressions across SUI-001 (R1–R10), SUI-002 (A1–A6), SUI-003 (V1–V10), and SUI-004 (C1–C12 + G1–G7) with cumulative 61/61 assertions passing.
-- **Evidence:** `src/Core.hpp:17, 55, 60, 66`, `src/Core.cpp:12-25, 139-160, 185-280, 290-360, 370-560, 580-660, 700-800, 1170-1230, 1260-1380`, `tests/group_identity/`.
-- **Planned phase:** Phase 6
+- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/group_identity/group_identity.pwn` with filterscript `group_identity_filterscript.pwn` across scenarios ID1 through ID10, lifecycle reconciliation suite H1 through H4, extended ABA eviction scenario ID-EVICT, ownership isolation scenarios O1 and O2, and resource accounting gate scenarios RAG1 through RAG3. All 20 scenarios passed with 0 crashes, no observed memory corruption, and no accounting drift across rapid replacement cycles. Verified zero regressions across SUI-001 (R1–R10), SUI-002 (A1–A7), SUI-003 (V1–V10), and SUI-004 (C1–C12 + G1–G7) with cumulative 66/66 assertions passing.
+- **Evidence:** `src/Core.hpp:17, 55, 60, 66`, `src/Core.cpp:12-25, 139-160, 185-280, 295-365, 370-560, 580-660, 700-800, 1170-1230, 1260-1380`, `tests/group_identity/`, `tests/amx_ownership/`.
+- **Planned phase:** Phase 6 / Phase 6.2 (Hardened)
 

@@ -14,6 +14,9 @@ new g_test_a3_pass = 0;
 new g_test_a4_pass = 0;
 new g_test_a5_pass = 0;
 new g_test_a6_pass = 0;
+new g_test_a7_pass = 0;
+
+new g_gm_a7_create_calls = 0;
 
 new g_active_count_before_unload = 0;
 
@@ -135,6 +138,32 @@ public RunOwnershipTests()
     }
 
     // -------------------------------------------------------------
+    // TEST A7: Anti-Hijacking Guard During Callback Execution
+    // -------------------------------------------------------------
+    print("\n[TEST-A7] Testing Anti-Hijacking Guard During Callback Execution...");
+    SUI_CreatePlayerFactoryGroup(0, "a7_gm_grp", "OnGmA7_Create", "OnGmA7_Destroy", "OnGmA7_Show", "OnGmA7_Hide");
+    SUI_SetGroupSize(0, "a7_gm_grp", 3);
+    SUI_ShowGroup(0, "a7_gm_grp");
+
+    new a7HijackResult = CallRemoteFunction("FS_GetA7HijackResult", "");
+    new a7IsCreated = SUI_IsGroupCreated(0, "a7_gm_grp");
+    new a7IsVisible = SUI_IsGroupVisible(0, "a7_gm_grp");
+
+    // Clean up A7 group before unload test
+    SUI_DestroyGroup(0, "a7_gm_grp");
+
+    if (a7HijackResult == 0 && g_gm_a7_create_calls == 1 && a7IsCreated == 1 && a7IsVisible == 1)
+    {
+        g_test_a7_pass = 1;
+        print("[TEST-A7] PASS: Filterscript hijack during callback rejected (return 0), Gamemode retains group.");
+    }
+    else
+    {
+        printf("[TEST-A7] FAIL: a7HijackResult=%d gm_a7_calls=%d isCreated=%d isVisible=%d",
+            a7HijackResult, g_gm_a7_create_calls, a7IsCreated, a7IsVisible);
+    }
+
+    // -------------------------------------------------------------
     // TEST A5 & A6 SETUP: Safe Dynamic AMX Unload & Capacity Repair
     // -------------------------------------------------------------
     print("\n[TEST-A5] Preparing AMX Unload test...");
@@ -194,7 +223,7 @@ public VerifyUnloadStage()
     // SUMMARY REPORT
     // -------------------------------------------------------------
     print("\n================================================================");
-    print("          SUI AMX OWNERSHIP REGRESSION RESULTS (A1-A6)          ");
+    print("          SUI AMX OWNERSHIP REGRESSION RESULTS (A1-A7)          ");
     print("================================================================");
     printf("A1 (Gamemode Owner Dispatch):              %s", (g_test_a1_pass) ? ("PASS") : ("FAIL"));
     printf("A2 (Callback Name Collision Isolation):    %s", (g_test_a2_pass) ? ("PASS") : ("FAIL"));
@@ -202,11 +231,12 @@ public VerifyUnloadStage()
     printf("A4 (Anti-Hijacking Registration Guard):    %s", (g_test_a4_pass) ? ("PASS") : ("FAIL"));
     printf("A5 (Safe AMX Unload & Capacity Repair):    %s", (g_test_a5_pass) ? ("PASS") : ("FAIL"));
     printf("A6 (Post-Unload Re-registration):          %s", (g_test_a6_pass) ? ("PASS") : ("FAIL"));
+    printf("A7 (Anti-Hijack During Owner Callback):    %s", (g_test_a7_pass) ? ("PASS") : ("FAIL"));
     print("================================================================");
 
-    if (g_test_a1_pass && g_test_a2_pass && g_test_a3_pass && g_test_a4_pass && g_test_a5_pass && g_test_a6_pass)
+    if (g_test_a1_pass && g_test_a2_pass && g_test_a3_pass && g_test_a4_pass && g_test_a5_pass && g_test_a6_pass && g_test_a7_pass)
     {
-        print("OVERALL RESULT: ALL AMX OWNERSHIP TESTS PASSED!");
+        print("OVERALL RESULT: ALL AMX OWNERSHIP TESTS PASSED! (7/7)");
     }
     else
     {
@@ -299,3 +329,19 @@ forward OnGmReclaim_Show(playerid);
 public OnGmReclaim_Show(playerid) { return 1; }
 forward OnGmReclaim_Hide(playerid);
 public OnGmReclaim_Hide(playerid) { return 1; }
+
+forward OnGmA7_Create(playerid);
+public OnGmA7_Create(playerid)
+{
+    g_gm_a7_create_calls++;
+    // Trigger filterscript hijack attempt during callback
+    CallRemoteFunction("FS_TryHijackA7", "d", playerid);
+    return 1;
+}
+forward OnGmA7_Destroy(playerid);
+public OnGmA7_Destroy(playerid) { return 1; }
+forward OnGmA7_Show(playerid);
+public OnGmA7_Show(playerid) { return 1; }
+forward OnGmA7_Hide(playerid);
+public OnGmA7_Hide(playerid) { return 1; }
+

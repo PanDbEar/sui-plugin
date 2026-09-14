@@ -295,74 +295,79 @@ bool SUICore::RegisterFactoryGroup(
         return false;
     }
 
+    auto itPlayer = players.find(playerId);
+    if (itPlayer != players.end())
+    {
+        auto itGroup = itPlayer->second.groups.find(group);
+        if (itGroup != itPlayer->second.groups.end())
+        {
+            // Invariant 1: Different-owner registration is ALWAYS rejected while old group exists
+            if (itGroup->second.ownerAmx != nullptr && itGroup->second.ownerAmx != amx)
+            {
+                Debug("RegisterFactoryGroup rejected: group %s already owned by amx=%p (caller amx=%p)",
+                    group.c_str(), itGroup->second.ownerAmx, amx);
+                return false;
+            }
+
+            // Invariant 2: Re-registration during active callback execution is REJECTED
+            // Both same-owner and cross-owner cannot mutate/replace an active group while
+            // it is participating in an outer callback transaction.
+            if (itGroup->second.isExecutingCallback)
+            {
+                Debug("RegisterFactoryGroup rejected: group %s is currently executing a callback playerid=%d",
+                    group.c_str(), playerId);
+                return false;
+            }
+
+            // Updating callback configuration for existing group outside of callbacks
+            auto& pGroup = itGroup->second;
+            pGroup.ownerAmx = amx;
+            pGroup.cbCreate = cbCreate;
+            pGroup.cbDestroy = cbDestroy;
+            pGroup.cbShow = cbShow;
+            pGroup.cbHide = cbHide;
+
+            Debug("RegisterFactoryGroup updated existing group playerid=%d group=%s instanceId=%llu ownerAmx=%p",
+                playerId, group.c_str(), static_cast<unsigned long long>(pGroup.instanceId), amx);
+            return true;
+        }
+    }
+
+    // New group creation: Allocate fresh instance ID FIRST before modifying state
+    uint64_t newId = 0;
+    if (!TryAllocateGroupInstanceId(newId))
+    {
+        Debug("RegisterFactoryGroup failed: instance ID allocation failure playerid=%d group=%s",
+            playerId, group.c_str());
+        return false;
+    }
+
     auto& ctx = players[playerId];
     ctx.playerId = playerId;
 
-    auto it = ctx.groups.find(group);
-    if (it != ctx.groups.end())
-    {
-        if (it->second.ownerAmx != nullptr && it->second.ownerAmx != amx)
-        {
-            Debug("RegisterFactoryGroup rejected: group %s already owned by amx=%p (caller amx=%p)",
-                group.c_str(), it->second.ownerAmx, amx);
-            return false;
-        }
-    }
-
-    bool isNewGroup = (it == ctx.groups.end());
-    bool isReplacingCallback = (it != ctx.groups.end() && it->second.isExecutingCallback);
-    bool isUninitialized = (it != ctx.groups.end() && it->second.instanceId == 0);
-
-    if (isNewGroup || isReplacingCallback || isUninitialized)
-    {
-        uint64_t newId = 0;
-        if (!TryAllocateGroupInstanceId(newId))
-        {
-            Debug("RegisterFactoryGroup failed: instance ID allocation failure playerid=%d group=%s",
-                playerId, group.c_str());
-            return false;
-        }
-
-        if (isReplacingCallback && it->second.isCreated)
-        {
-            SubtractActiveTextDrawCount(ctx, it->second.estimatedSize);
-        }
-
-        auto& pGroup = ctx.groups[group];
-        pGroup = SUIGroup();
-        pGroup.name = group;
-        pGroup.instanceId = newId;
-        pGroup.ownerAmx = amx;
-        pGroup.cbCreate = cbCreate;
-        pGroup.cbDestroy = cbDestroy;
-        pGroup.cbShow = cbShow;
-        pGroup.cbHide = cbHide;
-        pGroup.isCreated = false;
-        pGroup.isVisible = false;
-        pGroup.hiddenSinceTick = 0;
-        pGroup.lastUsedTick = 0;
-        pGroup.idleTimeoutMs = 30000;
-        pGroup.estimatedSize = 1;
-        pGroup.priority = SUI_PRIORITY_NORMAL;
-        pGroup.evictable = true;
-        pGroup.isExecutingCallback = false;
-    }
-    else
-    {
-        auto& pGroup = it->second;
-        pGroup.ownerAmx = amx;
-        pGroup.cbCreate = cbCreate;
-        pGroup.cbDestroy = cbDestroy;
-        pGroup.cbShow = cbShow;
-        pGroup.cbHide = cbHide;
-    }
-
     auto& pGroup = ctx.groups[group];
+    pGroup = SUIGroup();
+    pGroup.name = group;
+    pGroup.instanceId = newId;
+    pGroup.ownerAmx = amx;
+    pGroup.cbCreate = cbCreate;
+    pGroup.cbDestroy = cbDestroy;
+    pGroup.cbShow = cbShow;
+    pGroup.cbHide = cbHide;
+    pGroup.isCreated = false;
+    pGroup.isVisible = false;
+    pGroup.hiddenSinceTick = 0;
+    pGroup.lastUsedTick = 0;
+    pGroup.idleTimeoutMs = 30000;
+    pGroup.estimatedSize = 1;
+    pGroup.priority = SUI_PRIORITY_NORMAL;
+    pGroup.evictable = true;
+    pGroup.isExecutingCallback = false;
 
-    Debug("RegisterFactoryGroup playerid=%d group=%s instanceId=%llu ownerAmx=%p create=%s destroy=%s show=%s hide=%s",
+    Debug("RegisterFactoryGroup registered new group playerid=%d group=%s instanceId=%llu ownerAmx=%p create=%s destroy=%s show=%s hide=%s",
         playerId,
         group.c_str(),
-        static_cast<unsigned long long>(pGroup.instanceId),
+        static_cast<unsigned long long>(newId),
         amx,
         cbCreate.c_str(),
         cbDestroy.c_str(),

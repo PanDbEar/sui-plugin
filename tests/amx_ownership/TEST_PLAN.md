@@ -1,4 +1,4 @@
-﻿# SUI-002 AMX Ownership & Callback Isolation Test Plan
+# SUI-002 AMX Ownership & Callback Isolation Test Plan
 
 This document defines the multi-AMX test suite designed to verify **SUI-002** (AMX Ownership, Callback Isolation, and Safe AMX Unload).
 
@@ -72,5 +72,10 @@ The test suite consists of two scripts running simultaneously in a live SA-MP se
   - SUI_IsGroupCreated(0, gm_perm_grp) returns 1.
 
 ### Test A6: Post-Unload Group Re-registration & Immunity
-- **Action**: After Filterscript unloads, Gamemode attempts to register a new group using the previously freed name s_active_grp.
+- **Action**: After Filterscript unloads, Gamemode attempts to register a new group using the previously freed name fs_active_grp.
 - **Assertion**: Registration succeeds because the previous owner AMX is gone and the group was purged. Showing the new group works properly.
+
+### Test A7: Anti-Hijacking Guard During Callback Execution
+- **Action**: Gamemode registers `a7_gm_grp`. While Gamemode's `OnGmA7_Create` callback is actively executing, Filterscript calls `SUI_CreatePlayerFactoryGroup` attempting to hijack `a7_gm_grp`.
+- **Assertion**: Filterscript's registration returns 0. Gamemode retains sole ownership, completes callback execution, and group becomes created/visible. Callback-window hijacking is completely blocked.
+
