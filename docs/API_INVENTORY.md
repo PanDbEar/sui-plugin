@@ -100,4 +100,4 @@ Composes 5 real C++ natives sequentially:
 5. `SUI_SetGroupEvictable(playerid, group, evictable)`
 
 **Analysis:**
-The helper introduces no new runtime behavior; it is purely syntactic sugar for gamemode convenience. In Phase 12, it was updated to check the return value of `SUI_CreatePlayerFactoryGroup` and propagate `0` on registration failure (or `1` on success).
+The helper introduces no new runtime behavior; it is purely syntactic sugar for gamemode convenience. In Phase 12.1, it was hardened with parameter prevalidation (strictly rejecting negative sizes, negative timeouts, or out-of-bounds priorities without mutating internal state) and atomic failure handling across all configuration setters, guaranteeing that `1` indicates complete setup success and `0` indicates any validation or configuration failure.

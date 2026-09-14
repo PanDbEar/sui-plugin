@@ -262,4 +262,4 @@ stock SUI_RegisterGroup(
 );
 ```
 Convenience function that combines registration, size declaration, idle timeout, priority, and evictability configuration into a single call.
-- **Returns**: `1` on success, `0` if `SUI_CreatePlayerFactoryGroup` fails (e.g. invalid player ID, group already exists under another owner, or re-registration during active callback).
+- **Returns**: `1` on complete setup success, `0` on any prevalidation failure (e.g. negative size, negative timeout, out-of-bounds priority), registration error (invalid player ID, group already exists under another owner, or re-registration during active callback), or setter failure.

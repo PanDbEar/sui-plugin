@@ -224,19 +224,20 @@ native SUI_SetDebug(bool:enabled);
  */
 
 /**
- * Helper stock to register and configure a factory group in a single call.
+ * Convenience stock to register a factory group and configure initial size, timeout, priority, and eviction.
+ * Prevalidates arguments and executes all configuration setters sequentially.
  * 
- * @param playerid Target player ID
+ * @param playerid Target player ID (must be valid: 0 <= playerid < 1000)
  * @param group Unique group name
  * @param cbCreate Public create callback name
  * @param cbDestroy Public destroy callback name
  * @param cbShow Public show callback name
  * @param cbHide Public hide callback name
- * @param size Estimated textdraw count (default: 1)
- * @param timeout_ms Idle destruction timeout in ms (default: 30000; 0 = next-tick reclamation)
- * @param priority Eviction priority (default: SUI_PRIORITY_NORMAL)
+ * @param size Estimated textdraw count (default: 1; must be >= 0)
+ * @param timeout_ms Idle destruction timeout in ms (default: 30000; 0 = next-tick reclamation; must be >= 0)
+ * @param priority Eviction priority (default: SUI_PRIORITY_NORMAL; must be SUI_PRIORITY_LOW..SUI_PRIORITY_CRITICAL)
  * @param evictable Whether group is evictable (default: true)
- * @return 1 on success, 0 on registration failure
+ * @return 1 on complete setup success, 0 on any validation, registration, or configuration failure
  */
 stock SUI_RegisterGroup(
     playerid,
@@ -251,13 +252,25 @@ stock SUI_RegisterGroup(
     bool:evictable = true
 )
 {
+    // Prevalidate configuration arguments matching native validation contracts
+    if (size < 0 || timeout_ms < 0 || priority < SUI_PRIORITY_LOW || priority > SUI_PRIORITY_CRITICAL)
+    {
+        return 0;
+    }
+
     if (!SUI_CreatePlayerFactoryGroup(playerid, group, cbCreate, cbDestroy, cbShow, cbHide))
     {
         return 0;
     }
-    SUI_SetGroupSize(playerid, group, size);
-    SUI_SetIdleTimeout(playerid, group, timeout_ms);
-    SUI_SetGroupPriority(playerid, group, priority);
-    SUI_SetGroupEvictable(playerid, group, evictable);
+
+    if (!SUI_SetGroupSize(playerid, group, size) ||
+        !SUI_SetIdleTimeout(playerid, group, timeout_ms) ||
+        !SUI_SetGroupPriority(playerid, group, priority) ||
+        !SUI_SetGroupEvictable(playerid, group, evictable))
+    {
+        SUI_DestroyGroup(playerid, group);
+        return 0;
+    }
+
     return 1;
 }

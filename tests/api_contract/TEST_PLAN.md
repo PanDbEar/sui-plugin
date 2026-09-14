@@ -16,7 +16,24 @@ Verify that all public SUI declarations in `pawn/sui.inc`, runtime AMX native re
 | **AP5** | Handler Declarations & Definitions | Every registered C++ native handler is declared in `src/Natives.hpp` and defined in `src/Natives.cpp`. | Automated Static Checker (`check_api_surface.py`) | 19 / 19 match |
 | **AP6** | Documentation Synchronization | All 19 registered natives are documented in `docs/API_REFERENCE.md` with accurate signatures and parameters. | Automated Static Checker (`check_api_surface.py`) | 19 / 19 match |
 | **AP7** | Priority Constants & Defaults | Priority constants (`LOW=0`, `NORMAL=1`, `HIGH=2`, `CRITICAL=3`) and capacity defaults (`size=1`, `timeout=30000`, `max=256`, `threshold=230`) match between include, C++ headers, and docs. | Automated Static Checker & Source Audit | 100% synchronized |
-| **AP8** | Example & Fixture Compilation | Shipped example (`examples/factory_login_example.pwn`) and all 15 permanent test fixture `.pwn` scripts compile cleanly with Pawn compiler 3.2.3664. | Automated Pawn Compiler (`pawncc`) | 0 errors, 0 warnings |
+| **AP8** | Example & Fixture Compilation | Shipped example (`examples/factory_login_example.pwn`) and all 16 permanent test fixture `.pwn` scripts compile cleanly with Pawn compiler 3.2.3664. | Automated Pawn Compiler (`pawncc`) | 0 errors, 0 warnings |
+
+---
+
+## Runtime Stock Helper Verification Scenarios (AS1–AS8)
+
+Suite script: `tests/api_contract/api_contract_runtime.pwn`
+
+| Test ID | Scope | Invariant / Target Specification | Expected Outcome |
+| :--- | :--- | :--- | :--- |
+| **AS1** | Valid Setup | Complete valid `SUI_RegisterGroup` parameters register group, show group, verify active textdraw count matches size. | PASS (return 1) |
+| **AS2** | Invalid Priority | Out-of-bounds priority (99, -1, 4) rejected by prevalidation; zero state created; capacity unaffected. | PASS (return 0) |
+| **AS3** | Negative Size | Negative size parameter (-10) rejected by prevalidation; zero state created; capacity unaffected. | PASS (return 0) |
+| **AS4** | Negative Timeout | Negative timeout parameter (-500) rejected by prevalidation; zero state created; capacity unaffected. | PASS (return 0) |
+| **AS5** | Invalid Player ID | Out-of-bounds player IDs (-1, 1000, INVALID_PLAYER_ID) rejected at native boundary; no phantom PlayerContext. | PASS (return 0) |
+| **AS6** | Config Update | Re-registering existing uncreated group with updated size/priority/timeout updates config cleanly. | PASS (return 1) |
+| **AS7** | Usable Lifecycle | Valid registered group operates cleanly through full lifecycle: show, touch, hide, state queries. | PASS (return 1) |
+| **AS8** | Zero Partial State | After failed registration attempt, registering clean group under same name succeeds with 100% functionality. | PASS (return 1) |
 
 ---
 
@@ -26,6 +43,7 @@ Run the automated surface checker:
 ```bash
 python tests/api_contract/check_api_surface.py
 ```
+
 Compile all fixtures:
 ```powershell
 & "C:\Users\alifc\Downloads\Project\Texture Studio\pawno\pawncc.exe" <file>.pwn -i<include_path> -ipawn

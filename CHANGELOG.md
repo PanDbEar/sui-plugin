@@ -12,11 +12,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Verified exact 1-to-1 correspondence across all 19 public C++ natives (18 player-specific + 1 global) and 1 stock helper (`SUI_RegisterGroup`).
   - Formalized return contracts: untagged natives return `1` on success and `0` on error/parameter rejection; `bool:` tagged queries return `true` or `false`.
   - Clarified zero idle timeout semantics (`timeout_ms = 0` triggers immediate destruction on next server tick, does not disable idle timer).
-  - Hardened `SUI_RegisterGroup` stock helper to check `SUI_CreatePlayerFactoryGroup` return value and propagate `0` on failure instead of silently continuing.
+  - Hardened `SUI_RegisterGroup` stock helper with parameter prevalidation (strictly rejecting negative sizes, negative timeouts, or out-of-bounds priorities before creating state) and atomic failure handling across all configuration setters with rollback cleanup, guaranteeing that `1` indicates complete setup success and `0` indicates any validation, registration, or configuration failure.
   - Aligned callback documentation across `README.md`, `API_REFERENCE.md`, and `API_INVENTORY.md` to reflect SUI-006 decoupled execution semantics (transitions depend strictly on `AMX_ERR_NONE`, Pawn return value is purely informational).
   - Migrated shipped example script `examples/factory_login_example.pwn` from open.mp include to SA-MP standard `a_samp.inc`, providing fallback definitions for `INVALID_PLAYER_TEXT_DRAW` and `TEXT_DRAW_ALIGN_CENTER`.
   - Shortened overlength function names in `tests/player_id_validation/player_id_validation.pwn` to eliminate Pawn compiler symbol truncation warnings.
-  - Verified clean compilation of all 17 `.pwn` scripts (1 example + 16 test scripts) with Pawn compiler 3.2.3664 (0 errors, 0 warnings).
+  - Created permanent runtime test suite `tests/api_contract/api_contract_runtime.pwn` covering scenarios AS1 through AS8 (8/8 PASS).
+  - Verified clean compilation of all 18 `.pwn` scripts (1 example + 17 test scripts) with Pawn compiler 3.2.3664 (0 errors, 0 warnings).
+  - Verified live execution of all 11 permanent test suites on headless 32-bit Linux SA-MP dedicated server (`samp03svr`) with cumulative 149 / 149 PASS (100%).
 - **SUI-009**: Player ID Domain Validation, Phantom PlayerContext Prevention, and Native Trust-Boundary Hardening. Status: `FIXED — runtime player ID validation verified`.
   - Defined authoritative player-ID domain `0 <= playerId < 1000` (`SUI_MAX_PLAYERS = 1000`) in `src/Utils.hpp` via `Utils::IsValidPlayerId(int playerId)` and `Utils::TryGetPlayerId(cell value, int& out)`.
   - Hardened all 18 player-accepting Pawn native handlers in `src/Natives.cpp` with strict, early boundary checks immediately following `CheckParams` and before any AMX address translation or core dispatch.

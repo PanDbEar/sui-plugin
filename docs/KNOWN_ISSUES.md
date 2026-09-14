@@ -179,14 +179,15 @@
   - Exactly 19 public C++ natives (18 player-specific + 1 global) and 1 stock helper (`SUI_RegisterGroup`) are registered, declared, and documented.
   - Aligned return value contracts: documented that untagged natives return `1` on success and `0` on failure (or parameter error), and `bool:` tagged natives return `true` or `false`.
   - Documented zero idle timeout semantics (`timeout_ms = 0` triggers immediate destruction on next server tick, does not disable idle timer).
-  - Hardened `SUI_RegisterGroup` stock helper to check `SUI_CreatePlayerFactoryGroup` return value and propagate `0` on failure instead of masking registration errors.
+  - In Phase 12.1, hardened `SUI_RegisterGroup` stock helper with parameter prevalidation (strictly rejecting negative sizes, negative timeouts, or out-of-bounds priorities before creating state) and atomic failure handling across all configuration setters, guaranteeing that `1` indicates complete setup success and `0` indicates any validation or configuration failure with rollback cleanup.
   - Aligned callback contract documentation with SUI-006 decoupled execution semantics (transitions governed by `AMX_ERR_NONE`, Pawn return value is purely informational).
   - Created automated static API contract verification suite `tests/api_contract/check_api_surface.py` covering 7 programmatic validation checks (AP1 through AP7).
+  - Created permanent runtime test suite `tests/api_contract/api_contract_runtime.pwn` covering scenarios AS1 through AS8 (8/8 PASS).
   - Fixed legacy example script `examples/factory_login_example.pwn` (migrated from open.mp to legacy SA-MP `a_samp.inc`, fixed callback declarations and fallback constants).
   - Shortened overlength function names in `tests/player_id_validation/player_id_validation.pwn` to prevent Pawn compiler symbol truncation warnings.
-- **Verification:** Verified via automated script `tests/api_contract/check_api_surface.py` (7/7 PASS). Verified compilation of all 17 `.pwn` scripts (1 example + 16 test scripts) using Pawn compiler 3.2.3664 with 0 errors and 0 warnings.
-- **Evidence:** `pawn/sui.inc`, `src/main.cpp:14-38`, `src/Natives.cpp`, `docs/API_REFERENCE.md`, `docs/API_INVENTORY.md`, `README.md`, `examples/factory_login_example.pwn`, `tests/api_contract/check_api_surface.py`.
-- **Planned phase:** Phase 12
+- **Verification:** Verified via automated script `tests/api_contract/check_api_surface.py` (7/7 PASS). Verified compilation of all 18 `.pwn` scripts (1 example + 17 test scripts) using Pawn compiler 3.2.3664 with 0 errors and 0 warnings. Verified live execution of all 11 permanent test suites on headless 32-bit Linux SA-MP dedicated server (`samp03svr`) with cumulative 149 / 149 PASS (100%).
+- **Evidence:** `pawn/sui.inc`, `src/main.cpp:14-38`, `src/Natives.cpp`, `docs/API_REFERENCE.md`, `docs/API_INVENTORY.md`, `README.md`, `examples/factory_login_example.pwn`, `tests/api_contract/check_api_surface.py`, `tests/api_contract/api_contract_runtime.pwn`.
+- **Planned phase:** Phase 12 / Phase 12.1
 
 ---
 
