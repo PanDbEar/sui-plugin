@@ -610,18 +610,46 @@ public RunAccountingGateTests()
     SUI_DestroyGroup(0, "g7_2"); // count must become 12
     new g7_act3 = SUI_GetActiveTextDrawCount(0); // 12
 
-    SUI_ResetPlayer(0);
+    SUI_DestroyGroup(0, "g7_1"); // count must become 0
     new g7_act4 = SUI_GetActiveTextDrawCount(0); // 0
 
-    if (g7_act1 == 30 && g7_act2 == 30 && g7_act3 == 12 && g7_act4 == 0)
+    // Invariant I1 Conservation across Hide, Re-show, and Destroy
+    SUI_CreatePlayerFactoryGroup(0, "g7_hide_probe", "OnDummy_Create", "OnDummy_Destroy", "OnDummy_Show", "OnDummy_Hide");
+    SUI_SetGroupSize(0, "g7_hide_probe", 5);
+    SUI_ShowGroup(0, "g7_hide_probe");
+    new g7_p_act1 = SUI_GetActiveTextDrawCount(0); // 5
+    new g7_p_cr1 = SUI_IsGroupCreated(0, "g7_hide_probe"); // 1
+    new g7_p_vis1 = SUI_IsGroupVisible(0, "g7_hide_probe"); // 1
+
+    SUI_HideGroup(0, "g7_hide_probe");
+    new g7_p_act2 = SUI_GetActiveTextDrawCount(0); // 5
+    new g7_p_cr2 = SUI_IsGroupCreated(0, "g7_hide_probe"); // 1
+    new g7_p_vis2 = SUI_IsGroupVisible(0, "g7_hide_probe"); // 0
+
+    SUI_ShowGroup(0, "g7_hide_probe");
+    new g7_p_act3 = SUI_GetActiveTextDrawCount(0); // 5
+    new g7_p_cr3 = SUI_IsGroupCreated(0, "g7_hide_probe"); // 1
+    new g7_p_vis3 = SUI_IsGroupVisible(0, "g7_hide_probe"); // 1
+
+    SUI_DestroyGroup(0, "g7_hide_probe");
+    new g7_p_act4 = SUI_GetActiveTextDrawCount(0); // 0
+    new g7_p_cr4 = SUI_IsGroupCreated(0, "g7_hide_probe"); // 0
+    new g7_p_vis4 = SUI_IsGroupVisible(0, "g7_hide_probe"); // 0
+
+    new probe_ok = (g7_p_act1 == 5 && g7_p_cr1 == 1 && g7_p_vis1 == 1 &&
+                    g7_p_act2 == 5 && g7_p_cr2 == 1 && g7_p_vis2 == 0 &&
+                    g7_p_act3 == 5 && g7_p_cr3 == 1 && g7_p_vis3 == 1 &&
+                    g7_p_act4 == 0 && g7_p_cr4 == 0 && g7_p_vis4 == 0);
+
+    if (g7_act1 == 30 && g7_act2 == 30 && g7_act3 == 12 && g7_act4 == 0 && probe_ok)
     {
         g_g7_pass = 1;
-        print("[TEST-G7] PASS: I1 Conservation verified (30 -> 30 hidden -> 12 -> 0 reset).");
+        print("[TEST-G7] PASS: I1 Conservation verified (multi-group & single-group hide/re-show/destroy).");
     }
     else
     {
-        printf("[TEST-G7] FAIL: g7_act1=%d g7_act2=%d g7_act3=%d g7_act4=%d",
-            g7_act1, g7_act2, g7_act3, g7_act4);
+        printf("[TEST-G7] FAIL: g7_act1=%d g7_act2=%d g7_act3=%d g7_act4=%d probe_ok=%d",
+            g7_act1, g7_act2, g7_act3, g7_act4, probe_ok);
     }
 
     PrintCapacityResults();

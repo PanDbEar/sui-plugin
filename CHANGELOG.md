@@ -8,13 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - **SUI-017**: Hardened group lifecycle transactions against re-entrant group replacement and ABA identity confusion across Pawn callbacks. Status: `FIXED — runtime regression verified`.
-  - Added unique 64-bit monotonic `uint64_t instanceId` to `SUIGroup` allocated from `SUICore::nextGroupInstanceId`.
+  - Added unique 64-bit monotonic `uint64_t instanceId` to `SUIGroup` allocated via `SUICore::TryAllocateGroupInstanceId()`. Wrap detection refuses allocation on 64-bit exhaustion (`nextGroupInstanceId == 0`), guaranteeing instance IDs are never recycled.
   - Implemented `SUICore::GetPlayerGroupIfInstance(playerId, groupName, instanceId)` to enforce strict lifecycle generation matching (`same name != same group`).
-  - Allocated new generation `instanceId` in `RegisterFactoryGroup` upon initial registration or whenever a group is replaced during an in-flight callback (`isExecutingCallback == true`), while preserving identity across non-callback callback updates.
+  - Allocated new generation `instanceId` in `RegisterFactoryGroup` upon initial registration or whenever a group is replaced during an in-flight callback (`isExecutingCallback == true`), reconciling created capacity and initializing clean default state (`isCreated = false`, `isVisible = false`, `isExecutingCallback = false`).
   - Audited and secured all 7 callback boundaries across `ShowGroup`, `HideGroup`, `DestroyGroupInternal`, `EvictOneHiddenGroup`, and `ProcessTick` using transaction snapshots (`instanceId`) and post-callback generation verification. Outer operations abort immediately upon generation mismatch without mutating replacement state or prematurely resetting its callback guard.
   - Hardened multi-target lifecycle operations (`CleanupPlayer`, `ResetPlayer`) to snapshot `{groupName, instanceId}` tuples, preventing duplicate or mismatched destructions.
-  - Added invariant corruption logging to `RecalculateActiveTextDrawCount` if tracked created groups sum exceeds `maxTextDraws`.
-  - Verified live runtime regression suite (`tests/group_identity/`) with 10/10 test scenarios (ID1–ID10) passing on a 32-bit Linux SA-MP dedicated server (`samp03svr`).
+  - Reconciled lifecycle accounting: verified created-capacity preservation on `HideGroup` (H1) and exact single subtraction on destroy (H2, H3).
+  - Verified live runtime regression suite (`tests/group_identity/`) with 16/16 test scenarios passing (ID1–ID10, H1–H4, ID-EVICT, ID-CROSS-AMX) on a 32-bit Linux SA-MP dedicated server (`samp03svr`).
 - **SUI-004**: Hardened capacity accounting and arithmetic invariants against overflow, underflow, and callback size mutation. Status: `FIXED — runtime regression verified`.
   - Converted capacity evaluation in `EnsureCapacity` to 64-bit widened space (`(uint64_t)active + (uint64_t)required <= (uint64_t)threshold && total <= (uint64_t)max`), eliminating unsigned 32-bit addition wrap-around to zero.
   - Enforced `maxTextDraws` as a strict hard capacity ceiling in `SUICore::TryAddActiveTextDrawCount` and `EnsureCapacity`, failing addition and rejecting group creation without mutating accounting if projected count exceeds `maxTextDraws`.
@@ -45,8 +45,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **SUI-009 (Partially Addressed)**: Replaced mutating `players[playerId]` `std::unordered_map::operator[]` lookups in group setters (`SetGroupSize`, `SetGroupPriority`, `SetGroupEvictable`, `SetIdleTimeout`) with defensive non-inserting `GetPlayerContext()` lookups to prevent phantom `PlayerContext` creation.
 
 ### Added
-- Created `tests/group_identity/TEST_PLAN.md` documenting group identity and ABA re-entrancy test scenarios ID1 through ID10.
-- Created `tests/group_identity/group_identity.pwn` and `tests/group_identity/group_identity_filterscript.pwn` verifying ABA re-entrant replacement during callbacks (`cbCreate`, `cbShow`, `cbHide`, `cbDestroy`), transaction abort on replacement, tick processing identity safety, multi-AMX generation isolation, and multi-cycle identity stability.
+- Created `tests/group_identity/TEST_PLAN.md` documenting group identity, lifecycle reconciliation (H1–H4), and extended ABA re-entrancy test scenarios (ID1–ID10, ID-EVICT, ID-CROSS-AMX).
+- Created `tests/group_identity/group_identity.pwn` and `tests/group_identity/group_identity_filterscript.pwn` verifying ABA re-entrant replacement during callbacks (`cbCreate`, `cbShow`, `cbHide`, `cbDestroy`), transaction abort on replacement, tick processing identity safety, multi-AMX generation isolation, 100-cycle replacement stability, hide capacity preservation, visible/hidden destroy accounting order, in-place eviction replacement, and clean callback guard ownership.
 - Created `tests/capacity_arithmetic/TEST_PLAN.md` documenting capacity arithmetic test scenarios C1 through C12.
 - Created `tests/capacity_arithmetic/capacity_arithmetic.pwn` and `tests/capacity_arithmetic/capacity_filterscript.pwn` verifying overflow safety, underflow guards, callback size-mutation locking, exact accounting subtraction, and 100-cycle drift resistance.
 - Created `tests/native_validation/TEST_PLAN.md` documenting validation test scenarios V1 through V10.

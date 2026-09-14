@@ -11,16 +11,23 @@ std::vector<AMX*> SUICore::activeAmxInstances;
 bool SUICore::debugEnabled = false;
 uint64_t SUICore::nextGroupInstanceId = 1;
 
-uint64_t SUICore::AllocateGroupInstanceId()
+bool SUICore::TryAllocateGroupInstanceId(uint64_t& outId)
 {
     if (nextGroupInstanceId == 0)
     {
-        nextGroupInstanceId = 1;
+        outId = 0;
+        return false;
     }
-    uint64_t id = nextGroupInstanceId++;
-    if (id == 0)
+    outId = nextGroupInstanceId++;
+    return true;
+}
+
+uint64_t SUICore::AllocateGroupInstanceId()
+{
+    uint64_t id = 0;
+    if (!TryAllocateGroupInstanceId(id))
     {
-        id = nextGroupInstanceId++;
+        return 0;
     }
     return id;
 }
@@ -306,23 +313,51 @@ bool SUICore::RegisterFactoryGroup(
     bool isReplacingCallback = (it != ctx.groups.end() && it->second.isExecutingCallback);
     bool isUninitialized = (it != ctx.groups.end() && it->second.instanceId == 0);
 
-    auto& pGroup = ctx.groups[group];
-    pGroup.name = group;
-    pGroup.ownerAmx = amx;
-    pGroup.cbCreate = cbCreate;
-    pGroup.cbDestroy = cbDestroy;
-    pGroup.cbShow = cbShow;
-    pGroup.cbHide = cbHide;
-
     if (isNewGroup || isReplacingCallback || isUninitialized)
     {
-        pGroup.instanceId = AllocateGroupInstanceId();
-        pGroup.isExecutingCallback = false;
+        uint64_t newId = 0;
+        if (!TryAllocateGroupInstanceId(newId))
+        {
+            Debug("RegisterFactoryGroup failed: instance ID allocation failure playerid=%d group=%s",
+                playerId, group.c_str());
+            return false;
+        }
+
+        if (isReplacingCallback && it->second.isCreated)
+        {
+            SubtractActiveTextDrawCount(ctx, it->second.estimatedSize);
+        }
+
+        auto& pGroup = ctx.groups[group];
+        pGroup = SUIGroup();
+        pGroup.name = group;
+        pGroup.instanceId = newId;
+        pGroup.ownerAmx = amx;
+        pGroup.cbCreate = cbCreate;
+        pGroup.cbDestroy = cbDestroy;
+        pGroup.cbShow = cbShow;
+        pGroup.cbHide = cbHide;
         pGroup.isCreated = false;
         pGroup.isVisible = false;
         pGroup.hiddenSinceTick = 0;
         pGroup.lastUsedTick = 0;
+        pGroup.idleTimeoutMs = 30000;
+        pGroup.estimatedSize = 1;
+        pGroup.priority = SUI_PRIORITY_NORMAL;
+        pGroup.evictable = true;
+        pGroup.isExecutingCallback = false;
     }
+    else
+    {
+        auto& pGroup = it->second;
+        pGroup.ownerAmx = amx;
+        pGroup.cbCreate = cbCreate;
+        pGroup.cbDestroy = cbDestroy;
+        pGroup.cbShow = cbShow;
+        pGroup.cbHide = cbHide;
+    }
+
+    auto& pGroup = ctx.groups[group];
 
     Debug("RegisterFactoryGroup playerid=%d group=%s instanceId=%llu ownerAmx=%p create=%s destroy=%s show=%s hide=%s",
         playerId,

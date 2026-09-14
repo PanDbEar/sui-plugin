@@ -308,12 +308,14 @@ Furthermore, string parameters were retrieved via an unchecked `GetStringParam` 
 #### Mechanism
 Group names are addressable string keys within `PlayerContext::groups`, not unique object identities. When an outer lifecycle operation invokes a Pawn callback, arbitrary script code can destroy, reset, or replace that group under the exact same name. Upon returning from the callback, reacquiring the group purely by name reacquired the replacement generation (an ABA identity collision). The outer transaction would then erroneously mutate replacement state, clear re-entrancy mutex flags, or debit/credit capacity against the wrong lifetime. Raw pointer addresses could not serve as identity because `std::unordered_map` bucket node allocation reuses freed memory addresses.
 
-#### Phase 6 Remediation (Resolved)
-- Added a private, non-Pawn-visible 64-bit `uint64_t instanceId = 0` to `SUIGroup` with monotonic plugin-lifetime allocation via `SUICore::AllocateGroupInstanceId()`.
+#### Phase 6 & 6.1 Remediation (Resolved)
+- Added a private, non-Pawn-visible 64-bit `uint64_t instanceId = 0` to `SUIGroup` with monotonic plugin-lifetime allocation via `SUICore::TryAllocateGroupInstanceId()`. Counter wrap detection strictly refuses allocation on 64-bit exhaustion (`nextGroupInstanceId == 0`), guaranteeing instance IDs are never recycled.
 - In `SUICore::RegisterFactoryGroup`, assigned a new `instanceId` upon initial insertion, if `instanceId == 0`, or if re-registration occurs while the group is actively executing a callback (`isExecutingCallback == true`).
+- When an in-flight callback group is replaced, `RegisterFactoryGroup` reconciles capacity if the replaced generation was created (`SubtractActiveTextDrawCount`), and initializes the replacement with clean default state (`isCreated = false`, `isVisible = false`, `isExecutingCallback = false`), ensuring the new generation is never callback-locked. Outside callbacks, benign re-registrations preserve existing `instanceId` and group properties.
 - Implemented helper `SUICore::GetPlayerGroupIfInstance(playerId, groupName, instanceId)`.
 - Enforced post-callback identity verification across all 7 callback boundaries in `ShowGroup`, `HideGroup`, `DestroyGroupInternal`, `EvictOneHiddenGroup`, and `ProcessTick`. Stale operations immediately abort upon identity mismatch without mutating replacement state or corrupting capacity accounting.
-- Updated `CleanupPlayer` and `ResetPlayer` snapshots to preserve `{groupName, instanceId}` tuples.
+- Updated `CleanupPlayer` and `ResetPlayer` snapshots to preserve `{groupName, instanceId}` tuples. Note that while generation-aware snapshots prevent operating on replacement groups during teardown loops, final `players.erase(playerId)` semantics remain categorized under SUI-005.
+- Verified across 16 live server test scenarios (ID1–ID10, H1–H4, ID-EVICT, ID-CROSS-AMX) with 0 crashes, 0 capacity drift across 100 rapid replacement cycles, and 100% test pass rate.
 
 ---
 

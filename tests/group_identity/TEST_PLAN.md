@@ -71,3 +71,36 @@ The test suite consists of two scripts running on a live SA-MP 0.3.7 server:
 ### ID10: 100 Rapid Replacement Cycles
 - **Mechanism**: Execute 100 consecutive register -> show -> destroy -> reset cycles in a tight loop.
 - **Verification**: No crashes, zero memory corruption, active textdraw count cleanly returns to 0, and subsequent registrations operate reliably.
+
+---
+
+## 4. Phase 6.1 Lifecycle Reconciliation Specifications (H1–H4)
+
+### H1: Hide Must Preserve Created Capacity
+- **Mechanism**: Group size 5 is registered, shown, hidden, shown again, and destroyed.
+- **Verification**: `activeTextDrawCount` is 5 after first show, remains 5 after hide, remains 5 after second show, and drops to 0 upon destroy. `isCreated` remains 1 throughout hide.
+
+### H2: Visible Destroy Accounting Order
+- **Mechanism**: Visible group size 5 is destroyed directly via `SUI_DestroyGroup`.
+- **Verification**: `cbHide` and `cbDestroy` both execute once. `activeTextDrawCount` transitions 5 -> 0 exactly once without intermediate double-subtraction.
+
+### H3: Hidden Destroy Accounting Order
+- **Mechanism**: Group size 5 is shown, hidden, and then destroyed.
+- **Verification**: `cbHide` was called during hide, `cbDestroy` is called during destroy. `activeTextDrawCount` transitions 5 -> 0 without duplicate subtraction.
+
+### H4: Replacement Callback Guard Ownership
+- **Mechanism**: Group `"h4_grp"` is registered and shown. In `OnH4_OldCreate`, `"h4_grp"` is re-registered in-place WITHOUT resetting the player (`SUI_CreatePlayerFactoryGroup` called directly during callback).
+- **Verification**: New generation receives a fresh `instanceId` and clean initial state with `isExecutingCallback == false`. When outer `ShowGroup` on the old generation returns, it aborts due to instance mismatch without touching the new group. Subsequent explicit `SUI_ShowGroup` on `"h4_grp"` executes normally, proving the callback guard is not stuck.
+
+---
+
+## 5. Phase 6.1 Extended ABA Acceptance Specifications
+
+### ID-EVICT: Eviction Candidate In-Place ABA Replacement
+- **Mechanism**: Hidden candidate `"evict_cand_grp"` (size 50, priority LOW) is selected for eviction when a new group `"evict_req_grp"` (size 180) is shown under threshold 200. In candidate's `cbDestroy`, it re-registers `"evict_cand_grp"` in-place (size 15, uncreated) without resetting the player.
+- **Verification**: Outer eviction detects candidate replacement and aborts without erasing the new generation or subtracting its capacity. Requesting group fails capacity cleanly (`req_cr == 0`). Replacement group exists uncreated, and can subsequently be created and shown (`activeTD` reaches 15).
+
+### ID-CROSS-AMX: Strict Cross-AMX Replacement Isolation
+- **Mechanism**: Gamemode registers `"cross_amx_grp"` (size 10) and shows it. Gamemode destroys it. In `OnCrossGM_Destroy`, Gamemode resets the player and calls `FS_SetupCrossAmx` in Filterscript to register `"cross_amx_grp"` (size 8).
+- **Verification**: Gamemode outer destroy aborts due to instance mismatch. Filterscript's group exists and subsequent `SUI_ShowGroup` dispatches exclusively to Filterscript callbacks, verifying cross-AMX isolation.
+

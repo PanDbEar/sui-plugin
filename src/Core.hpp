@@ -57,6 +57,7 @@ public:
     static void Debug(const char* format, ...);
     static void SetDebug(bool enabled);
 
+    static bool TryAllocateGroupInstanceId(uint64_t& outId);
     static uint64_t AllocateGroupInstanceId();
     static bool IsAmxActive(AMX* amx);
     static void UnloadAmx(AMX* amx);
