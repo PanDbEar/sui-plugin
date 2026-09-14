@@ -15,9 +15,9 @@ This document defines the authoritative configuration, script dependencies, fixt
 | **callback_semantics** | `callback_semantics` | `callback_filterscript` | *(none)* | 13 | 13 / 13 PASS | No |
 | **player_teardown** | `player_teardown` | `player_teardown_filterscript` | *(none)* | 18 | 18 / 18 PASS | Yes |
 | **group_identity** | `group_identity` | `group_identity_filterscript` | *(none)* | 25 | 25 / 25 PASS | Yes |
-| **eviction_preflight** | `eviction_preflight` | `eviction_preflight_filterscript` | *(none)* | 14 | 14 / 14 PASS | Yes |
+| **eviction_preflight** | `eviction_preflight` | `eviction_preflight_filterscript` | *(none)* | 15 | 15 / 15 PASS | Yes |
 
-**Total Permanent Suite Pass Rate:** **116 / 116 PASS (100%)**
+**Total Permanent Suite Pass Rate:** **117 / 117 PASS (100%)**
 
 ---
 
@@ -94,8 +94,8 @@ This document defines the authoritative configuration, script dependencies, fixt
   3. Strict eviction priority: LOW < NORMAL < HIGH, older `lastUsedTick` before newer, deterministic alphabetical tie-breaker. CRITICAL, visible, non-evictable, and callback-executing groups strictly excluded.
   4. Candidate-by-candidate replanning: Replanning runs after each candidate eviction to safely observe re-entrant state changes or failed destruction.
   5. Multi-AMX eviction ownership: Filterscript candidate destroy callbacks execute within the Filterscript's AMX context.
-- **Assertions:** E1–E14 (14 tests)
-- **Exit Behavior:** Server automatically terminates via RCON upon completing E14.
+- **Assertions:** E1–E15 (15 tests)
+- **Exit Behavior:** Server automatically terminates via RCON upon completing E15.
 
 ---
 

@@ -210,7 +210,7 @@ If a player requested capacity exceeding `min(evictionThreshold, maxTextDraws)` 
 - **Destroy Failure Forward Progress**: If a candidate's `cbDestroy` fails (`PawnCallResult.Success() == false`), the group is preserved and capacity is not decremented. Attempted candidates are tracked in an `attemptedCandidates` ledger (`{groupName, instanceId}`), preventing repeated infinite attempts during the same `EnsureCapacity` call.
 - **Multi-AMX Ownership**: Filterscript candidates are destroyed strictly in their `ownerAmx` context.
 - **Partial Side-Effect Limitation**: Phase 9 prevents destruction when insufficiency is knowable before eviction begins (static insufficiency). If arbitrary Pawn callback side effects alter eligibility mid-transaction after candidate destruction has started, replanning aborts safely, but already-destroyed candidates cannot be rolled back (verified by E13).
-- **Runtime Verification**: Verified across tests E1–E14 in `tests/eviction_preflight/` (14/14 PASS). Cumulative regression baseline across all 8 suites passes 116 / 116 (100%).
+- **Runtime Verification**: Verified across tests E1–E15 in `tests/eviction_preflight/` (15/15 PASS). Cumulative regression baseline across all 8 suites passes 117 / 117 (100%).
 
 ---
 

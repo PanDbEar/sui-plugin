@@ -4,7 +4,7 @@
 Verify that capacity eviction in SUI operates under non-destructive preflight guarantees:
 Before any existing hidden UI group is destroyed for an incoming capacity reservation, SUI must prove that the currently eligible eviction set can satisfy that request under the current eviction policy. If eligible capacity is insufficient, SUI must return `false`, destroy NOTHING, invoke NO eviction callbacks, and preserve all existing groups.
 
-## Test Matrix (E1 – E14)
+## Test Matrix (E1 – E15)
 
 | Test ID | Category | Description | Success Criteria |
 |---|---|---|---|
@@ -22,3 +22,4 @@ Before any existing hidden UI group is destroyed for an incoming capacity reserv
 | **E12** | Destroy Callback Failure | Candidate destroy callback runtime failure | Group preserved; active count NOT decremented; replanning avoids infinite loop; request fails safely. |
 | **E13** | Re-entrant Mutation | Callback mutates another group's evictable flag during eviction | Replanning discovers remaining capacity insufficient; aborts cleanly; mutated group preserved. |
 | **E14** | Multi-AMX Ownership | Evicting candidate registered by Filterscript from Gamemode | Filterscript's `cbDestroy` called in its AMX context; group evicted; gamemode group shown; active count reconciled. |
+| **E15** | In-Flight Exclusion | Created hidden candidate executing callback isolated | Candidate is created, hidden, evictable, priority LOW, but has `isExecutingCallback = true`. Re-entrant capacity preflight isolates this predicate as sole reason for exclusion; nested request fails safely; outer destroy finishes authoritatively. |

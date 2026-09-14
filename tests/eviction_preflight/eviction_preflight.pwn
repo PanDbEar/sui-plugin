@@ -15,6 +15,7 @@ new g_test_e11_pass = 0;
 new g_test_e12_pass = 0;
 new g_test_e13_pass = 0;
 new g_test_e14_pass = 0;
+new g_test_e15_pass = 0;
 
 main()
 {
@@ -162,6 +163,37 @@ public OnE13_CandBDestroy(playerid)
 forward FS_RegisterE14(playerid);
 forward FS_ShowHideE14(playerid);
 forward FS_GetDestroyCalls();
+
+// ============================================================================
+// E15 CALLBACKS (In-flight executing callback candidate exclusion)
+// ============================================================================
+new g_e15_canda_destroy_calls = 0;
+new g_e15_candb_destroy_calls = 0;
+new g_e15_nested_show_res = -1;
+
+forward OnE15_CandADestroy(playerid);
+public OnE15_CandADestroy(playerid)
+{
+    g_e15_canda_destroy_calls++;
+    // While e15_cand_a is executing this destroy callback:
+    // e15_cand_a is created, hidden, evictable, priority LOW.
+    // BUT isExecutingCallback is TRUE!
+    // Active textdraw count is 40 (e15_cand_a size 30 + e15_cand_b size 10).
+    // Capacity ceiling = min(50, 50) = 50.
+    // Requesting e15_req (size 25) requires deficit: (40 + 25) - 50 = 15.
+    // If e15_cand_a were eligible, eligible capacity would be 30 + 10 = 40 >= 15 (pass).
+    // But because e15_cand_a has isExecutingCallback == true, only e15_cand_b (10) is eligible.
+    // 10 < 15, so EnsureCapacity preflight MUST fail and reject e15_req!
+    g_e15_nested_show_res = SUI_ShowGroup(playerid, "e15_req");
+    return 1;
+}
+
+forward OnE15_CandBDestroy(playerid);
+public OnE15_CandBDestroy(playerid)
+{
+    g_e15_candb_destroy_calls++;
+    return 1;
+}
 
 public OnGameModeInit()
 {
@@ -872,6 +904,69 @@ public OnGameModeInit()
     }
     SUI_ResetPlayer(0);
 
+    // -------------------------------------------------------------
+    // E15: Created Hidden In-Flight Candidate Exclusion (isExecutingCallback == true)
+    // -------------------------------------------------------------
+    print("\n[TEST-E15] Testing Created Hidden In-Flight Candidate Exclusion...");
+    SUI_CleanupPlayer(0);
+    SUI_SetMaxTextDraws(0, 50);
+    SUI_SetEvictionThreshold(0, 50);
+
+    // Register e15_cand_a (size 30, LOW priority, evictable)
+    g_e15_canda_destroy_calls = 0;
+    g_e15_candb_destroy_calls = 0;
+    g_e15_nested_show_res = -1;
+
+    SUI_CreatePlayerFactoryGroup(0, "e15_cand_a", "OnDummy_Create", "OnE15_CandADestroy", "OnDummy_Show", "OnDummy_Hide");
+    SUI_SetGroupSize(0, "e15_cand_a", 30);
+    SUI_SetGroupPriority(0, "e15_cand_a", SUI_PRIORITY_LOW);
+    SUI_SetGroupEvictable(0, "e15_cand_a", true);
+    SUI_ShowGroup(0, "e15_cand_a");
+    SUI_HideGroup(0, "e15_cand_a"); // created=1, visible=0, evictable=1, active=30
+
+    // Register e15_cand_b (size 10, LOW priority, evictable)
+    SUI_CreatePlayerFactoryGroup(0, "e15_cand_b", "OnDummy_Create", "OnE15_CandBDestroy", "OnDummy_Show", "OnDummy_Hide");
+    SUI_SetGroupSize(0, "e15_cand_b", 10);
+    SUI_SetGroupPriority(0, "e15_cand_b", SUI_PRIORITY_LOW);
+    SUI_SetGroupEvictable(0, "e15_cand_b", true);
+    SUI_ShowGroup(0, "e15_cand_b");
+    SUI_HideGroup(0, "e15_cand_b"); // created=1, visible=0, evictable=1, active=40
+
+    // Register e15_req (size 25)
+    SUI_CreatePlayerFactoryGroup(0, "e15_req", "OnDummy_Create", "OnDummy_Destroy", "OnDummy_Show", "OnDummy_Hide");
+    SUI_SetGroupSize(0, "e15_req", 25);
+
+    // Trigger destruction of e15_cand_a. In its cbDestroy, it re-entrantly requests e15_req (needs 15 freed).
+    // If e15_cand_a were eligible, eligible capacity would be 30 + 10 = 40 >= 15.
+    // Because e15_cand_a is executing callback, it is excluded; only e15_cand_b (10) is eligible (10 < 15).
+    // EnsureCapacity preflight rejects e15_req, nested show returns 0.
+    new e15_dest_res = SUI_DestroyGroup(0, "e15_cand_a");
+
+    new e15_canda_cr = SUI_IsGroupCreated(0, "e15_cand_a");
+    new e15_candb_cr = SUI_IsGroupCreated(0, "e15_cand_b");
+    new e15_req_cr = SUI_IsGroupCreated(0, "e15_req");
+    new e15_act = SUI_GetActiveTextDrawCount(0); // 10 (only e15_cand_b remains)
+
+    if (e15_dest_res == 1 &&
+        g_e15_canda_destroy_calls == 1 &&
+        g_e15_nested_show_res == 0 &&
+        g_e15_candb_destroy_calls == 0 &&
+        e15_canda_cr == 0 &&
+        e15_candb_cr == 1 &&
+        e15_req_cr == 0 &&
+        e15_act == 10)
+    {
+        g_test_e15_pass = 1;
+        print("[TEST-E15] PASS: In-flight candidate properly excluded based solely on isExecutingCallback.");
+    }
+    else
+    {
+        printf("[TEST-E15] FAIL: dest=%d a_calls=%d nested_res=%d b_calls=%d a_cr=%d b_cr=%d req_cr=%d act=%d",
+            e15_dest_res, g_e15_canda_destroy_calls, g_e15_nested_show_res, g_e15_candb_destroy_calls,
+            e15_canda_cr, e15_candb_cr, e15_req_cr, e15_act);
+    }
+    SUI_CleanupPlayer(0);
+
     // =============================================================
     // RESULTS SUMMARY
     // =============================================================
@@ -892,15 +987,16 @@ public OnGameModeInit()
     printf("E12 (Destroy Callback Failure Preservation):       %s", (g_test_e12_pass) ? ("PASS") : ("FAIL"));
     printf("E13 (Re-entrant Mutation Replanning):              %s", (g_test_e13_pass) ? ("PASS") : ("FAIL"));
     printf("E14 (Multi-AMX Eviction Ownership):                %s", (g_test_e14_pass) ? ("PASS") : ("FAIL"));
+    printf("E15 (In-Flight Candidate Exclusion):               %s", (g_test_e15_pass) ? ("PASS") : ("FAIL"));
     print("================================================================");
 
     new total_pass = g_test_e1_pass + g_test_e2_pass + g_test_e3_pass + g_test_e4_pass +
                      g_test_e5_pass + g_test_e6_pass + g_test_e7_pass + g_test_e8_pass +
                      g_test_e9_pass + g_test_e10_pass + g_test_e11_pass + g_test_e12_pass +
-                     g_test_e13_pass + g_test_e14_pass;
+                     g_test_e13_pass + g_test_e14_pass + g_test_e15_pass;
 
-    printf("TOTAL: %d / 14 PASSED", total_pass);
-    if (total_pass == 14)
+    printf("TOTAL: %d / 15 PASSED", total_pass);
+    if (total_pass == 15)
     {
         print("OVERALL RESULT: ALL EVICTION PREFLIGHT TESTS PASSED!");
     }
