@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **SUI-007**: Non-destructive capacity eviction preflight, minimal eviction planning, and re-entrant execution safety. Status: `FIXED — runtime eviction preflight verified`.
+  - Implemented preflight capacity sufficiency check in `SUICore::EnsureCapacity`: before destroying any existing hidden UI group, SUI calculates total eligible capacity across all viable eviction candidates. If total eligible capacity < capacity needed to satisfy reservation ceiling (`min(evictionThreshold, maxTextDraws)`), `EnsureCapacity` returns `false` immediately, destroying zero groups, invoking zero callbacks, and preserving all existing groups and capacity tracking.
+  - Implemented `SUICore::CollectEligibleEvictionCandidates`, gathering all instantiated, hidden, non-executing, evictable groups with priority < `SUI_PRIORITY_CRITICAL`.
+  - Preserved and formalized deterministic candidate eviction ordering: Priority (LOW [0] < NORMAL [1] < HIGH [2]), then Age (older `lastUsedTick` before newer), with a deterministic alphabetical tie-breaker (`groupName < other.groupName`).
+  - Implemented minimal eviction planning with candidate-by-candidate replanning: SUI evicts only the minimal number of groups necessary to satisfy the reservation ceiling, replanning after each candidate to safely handle re-entrant mutations (e.g. groups marked non-evictable or deleted) or destroy callback failures without risking infinite loops.
+  - Implemented `SUICore::EvictCandidate` with full `instanceId` generation tracking, callback re-entrancy protection, and `ownerAmx` script context dispatch for multi-AMX ownership safety.
+  - Verified live runtime execution on 32-bit Linux SA-MP dedicated server (`samp03svr`) with dedicated test suite `tests/eviction_preflight/` passing 14/14 test scenarios (E1–E14).
+  - Verified cumulative 116 / 116 passing assertions across all 8 permanent regression suites with 0 crashes, 0 memory corruption, and zero accounting drift.
 - **SUI-005**: Hardened player teardown transactions (`CleanupPlayer` and `ResetPlayer`), blocked re-entrant mutations, prevented recursion, and established explicit failure preservation contracts. Status: `FIXED — runtime teardown regression verified`.
   - Introduced `enum class PlayerTeardownState : uint8_t { None = 0, Cleanup, Reset }` in `PlayerContext`.
   - Enforced teardown guards across all mutation points (`RegisterFactoryGroup`, `ShowGroup`, `HideGroup`, `DestroyGroup`, `SetIdleTimeout`, `SetGroupSize`, `SetMaxTextDraws`, `SetEvictionThreshold`, `SetGroupPriority`, `SetGroupEvictable`, `TouchGroup`, `EnsureCapacity`), rejecting mutations during active teardown callbacks to prevent orphaned resources.

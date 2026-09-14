@@ -229,3 +229,45 @@ These operations perform non-mutating lookups against the active `PlayerContext`
 ### 6.6. Terminal Cleanup Scope & External Resource Disclaimer
 In `SUI_CleanupPlayer`, SUI unconditionally purges the internal C++ `PlayerContext` and associated container structures from plugin memory upon loop completion, ensuring zero tracking memory leaks in the plugin. However, if an external callback fails during destroy execution, host SA-MP textdraw IDs allocated inside Pawn scripts cannot be automatically reclaimed by SUI (as detailed under SUI-018).
 
+---
+
+## 7. Capacity Eviction Architecture & Preflight Safety (SUI-007)
+
+### 7.1. Non-Destructive Preflight Sufficiency Guarantee
+Before SUI destroys any existing hidden UI group during capacity reservation (`EnsureCapacity`), SUI computes the total eligible eviction capacity. If the total capacity of all currently eligible groups is less than the capacity required to satisfy the reservation ceiling (`min(evictionThreshold, maxTextDraws)`):
+- `EnsureCapacity` returns `false` immediately.
+- **Zero groups are destroyed.**
+- **Zero Pawn callbacks are invoked.**
+- **All existing UI groups and capacity counts are preserved intact.**
+
+### 7.2. Eviction Eligibility and Ordering Policy
+A group is eligible for capacity eviction if and only if all of the following hold:
+1. `group.isCreated == true` (group is instantiated)
+2. `group.isVisible == false` (group is hidden)
+3. `group.isExecutingCallback == false` (group is not in-flight)
+4. `group.evictable == true` (group is evictable)
+5. `group.priority < SUI_PRIORITY_CRITICAL` (critical groups are never evictable)
+
+Eligible candidates are ordered deterministically by:
+1. **Priority**: Lower numerical value first (`SUI_PRIORITY_LOW` [0] < `SUI_PRIORITY_NORMAL` [1] < `SUI_PRIORITY_HIGH` [2]).
+2. **Age**: Older `lastUsedTick` before newer.
+3. **Deterministic Tie-Breaker**: Lexicographical `groupName < other.groupName`.
+
+### 7.3. Minimal Planning and Re-entrant Execution Replanning
+SUI executes candidate eviction **one candidate at a time** in an iterative loop:
+1. Recompute projected capacity and remaining deficit against `targetCeiling`.
+2. Filter out candidates previously attempted in the current reservation transaction.
+3. Verify that remaining viable candidate capacity satisfies the deficit. If not, abort safely without further destruction.
+4. Evict the top-ranked candidate (`EvictCandidate`).
+5. Upon callback return, reacquire player and group state by `(playerId, instanceId)`.
+6. Re-evaluate overall capacity. If capacity is now satisfied, terminate successfully; otherwise, replan with updated state.
+
+This candidate-by-candidate loop guarantees that:
+- SUI evicts only the minimal number of groups needed (no over-eviction).
+- Re-entrant mutations performed by Pawn callbacks (e.g. changing group evictability, creating or destroying groups) are immediately observed on the next replanning iteration.
+- Failed destroy callbacks are tracked in `attemptedCandidates` to prevent infinite loops.
+
+### 7.4. Multi-AMX Eviction Ownership
+When an eviction candidate was registered by an AMX script different from the script requesting capacity (e.g., a filterscript group evicted to make room for a gamemode group), `CallPawnFunction` invokes `cbDestroy` strictly within the candidate's `ownerAmx` context. AMX ownership is fully preserved across the eviction boundary.
+
+

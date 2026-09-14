@@ -16,7 +16,7 @@
 | **SUI-004** | Medium | Core / Capacity | Capacity arithmetic overflow and accounting invariant safety | `FIXED — runtime regression verified` | Phase 5 |
 | **SUI-005** | High | Core / Lifecycle | Reset/Cleanup state loss when destruction fails | `FIXED — runtime teardown regression verified` | Phase 8 |
 | **SUI-006** | Medium | Core / AMX | Callback return-value / internal state divergence | `FIXED — runtime callback semantics verified` | Phase 7 |
-| **SUI-007** | Medium | Core / Eviction | Destructive capacity eviction without pre-flight sufficiency | `CONFIRMED` | Phase 2 |
+| **SUI-007** | Medium | Core / Eviction | Destructive capacity eviction without pre-flight sufficiency | `FIXED — runtime eviction preflight verified` | Phase 9 |
 | **SUI-008** | Medium | Core / State Machine | Failed-show hidden timestamp/state anomaly | `CONFIRMED` | Phase 1 |
 | **SUI-009** | Low | Core / Validation | Player ID validation / phantom PlayerContext creation | `PARTIALLY ADDRESSED` | Phase 1 |
 | **SUI-010** | Medium | API / Docs | Public API synchronization risk | `CONFIRMED` | Phase 0.1 / 1 |
@@ -121,11 +121,11 @@
 - **ID:** SUI-007
 - **Severity:** Medium
 - **Area:** Core / Eviction
-- **Status:** CONFIRMED
-- **Current behavior:** `EnsureCapacity` executes eviction callbacks one by one in a while loop. If total evictable textdraws cannot satisfy `requiredSize`, `EnsureCapacity` returns `false` only after already destroying candidate groups.
-- **Risk:** Existing user UI is permanently destroyed even though the requested UI cannot be shown.
-- **Evidence:** `src/Core.cpp:551-563`.
-- **Planned phase:** Phase 2
+- **Status:** FIXED — runtime eviction preflight verified
+- **Fix Summary:** Implemented non-destructive capacity eviction preflight in `EnsureCapacity`. Before destroying any candidate group, SUI calculates total eligible capacity across all viable eviction candidates (`isCreated && !isVisible && !isExecutingCallback && evictable && priority < CRITICAL`). If total eligible capacity cannot satisfy the capacity deficit against `min(evictionThreshold, maxTextDraws)`, `EnsureCapacity` returns `false` immediately with zero candidate destructions and zero callback invocations. SUI evicts candidates minimally one by one using deterministic ordering (priority LOW < NORMAL < HIGH, older `lastUsedTick` before newer, alphabetical tie-breaker), replanning after each candidate to safely handle re-entrant callback mutations or failed destructions without infinite loops. Filterscript candidates are destroyed strictly in their `ownerAmx` script context.
+- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/eviction_preflight/eviction_preflight.pwn` with filterscript `eviction_preflight_filterscript.pwn` across scenarios E1 through E14 (14/14 passing). Verified zero regressions across all 7 existing permanent test suites with cumulative 116 / 116 passing tests across 8 suites.
+- **Evidence:** `src/Core.hpp:69-75, 119-121`, `src/Core.cpp:1197-1380`, `tests/eviction_preflight/`.
+- **Planned phase:** Phase 9
 
 ---
 

@@ -66,6 +66,14 @@ struct PawnCallResult {
     }
 };
 
+struct EvictionCandidate {
+    std::string groupName;
+    uint64_t instanceId = 0;
+    uint32_t estimatedSize = 0;
+    uint8_t priority = 0;
+    uint64_t lastUsedTick = 0;
+};
+
 class SUICore {
 public:
     static std::unordered_map<int, PlayerContext> players;
@@ -108,6 +116,8 @@ public:
     static bool SetMaxTextDraws(int playerId, uint32_t maxCount);
     static bool SetEvictionThreshold(int playerId, uint32_t threshold);
     static void SetGroupPriority(int playerId, const std::string& groupName, uint8_t priority);
+    static std::vector<EvictionCandidate> CollectEligibleEvictionCandidates(const PlayerContext& ctx);
+    static bool EvictCandidate(PlayerContext& ctx, const EvictionCandidate& candidate);
     static bool EnsureCapacity(PlayerContext& ctx, uint32_t requiredSize);
     static bool EvictOneHiddenGroup(PlayerContext& ctx);
     static void MarkGroupDestroyed(PlayerContext& ctx, SUIGroup& group);

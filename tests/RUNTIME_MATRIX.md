@@ -15,8 +15,9 @@ This document defines the authoritative configuration, script dependencies, fixt
 | **callback_semantics** | `callback_semantics` | `callback_filterscript` | *(none)* | 13 | 13 / 13 PASS | No |
 | **player_teardown** | `player_teardown` | `player_teardown_filterscript` | *(none)* | 18 | 18 / 18 PASS | Yes |
 | **group_identity** | `group_identity` | `group_identity_filterscript` | *(none)* | 25 | 25 / 25 PASS | Yes |
+| **eviction_preflight** | `eviction_preflight` | `eviction_preflight_filterscript` | *(none)* | 14 | 14 / 14 PASS | Yes |
 
-**Total Permanent Suite Pass Rate:** **102 / 102 PASS (100%)**
+**Total Permanent Suite Pass Rate:** **116 / 116 PASS (100%)**
 
 ---
 
@@ -82,6 +83,19 @@ This document defines the authoritative configuration, script dependencies, fixt
   4. Active groups executing `cbHide` or `cbDestroy` cannot be destroyed by re-entrant `ResetPlayer`; reset returns 0, in-callback re-registration is rejected (Invariant 2), outer destroy authoritatively finalizes, and post-destruction name reuse succeeds (`ID2`, `ID3`, `ID4`, `ID7`, `ID-EVICT`, `X2`, `X3`, `X4`).
 - **Assertions:** ID1–ID10, H1–H4, ID-EVICT, ID-ABA-CROSS, O1–O2, RAG1–RAG3, X1–X4 (25 tests)
 - **Exit Behavior:** Server automatically terminates via RCON upon completing X4.
+
+### 8. eviction_preflight
+- **Target Issue:** SUI-007 (Non-destructive capacity eviction preflight, minimal eviction planning, and re-entrant execution safety)
+- **Gamemode:** `tests/eviction_preflight/eviction_preflight.pwn`
+- **Filterscript:** `tests/eviction_preflight/eviction_preflight_filterscript.pwn`
+- **Key Invariants:**
+  1. Capacity sufficiency preflight: If total eligible capacity < needed capacity, return false, destroy NOTHING, invoke NO callbacks, and preserve all existing groups.
+  2. Minimal eviction planning: SUI evicts the minimal number of candidates necessary to satisfy capacity (no over-eviction).
+  3. Strict eviction priority: LOW < NORMAL < HIGH, older `lastUsedTick` before newer, deterministic alphabetical tie-breaker. CRITICAL, visible, non-evictable, and callback-executing groups strictly excluded.
+  4. Candidate-by-candidate replanning: Replanning runs after each candidate eviction to safely observe re-entrant state changes or failed destruction.
+  5. Multi-AMX eviction ownership: Filterscript candidate destroy callbacks execute within the Filterscript's AMX context.
+- **Assertions:** E1–E14 (14 tests)
+- **Exit Behavior:** Server automatically terminates via RCON upon completing E14.
 
 ---
 

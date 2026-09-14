@@ -1,8 +1,10 @@
 #include "Core.hpp"
 #include "Utils.hpp"
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
+#include <utility>
 
 extern void (*logprintf)(const char* format, ...);
 
@@ -1195,81 +1197,11 @@ void SUICore::MarkGroupDestroyed(PlayerContext& ctx, SUIGroup& group)
     SubtractActiveTextDrawCount(ctx, group.estimatedSize);
 }
 
-bool SUICore::EnsureCapacity(PlayerContext& ctx, uint32_t requiredSize)
+std::vector<EvictionCandidate> SUICore::CollectEligibleEvictionCandidates(const PlayerContext& ctx)
 {
-    int playerId = ctx.playerId;
+    std::vector<EvictionCandidate> candidates;
 
-    if (requiredSize == 0)
-    {
-        requiredSize = 1;
-    }
-
-    while (true)
-    {
-        auto* currentCtx = GetPlayerContext(playerId);
-        if (!currentCtx || currentCtx->teardownState != PlayerTeardownState::None)
-        {
-            return false;
-        }
-
-        if (requiredSize > currentCtx->maxTextDraws)
-        {
-            Debug("EnsureCapacity failed: requiredSize (%u) exceeds maxTextDraws (%u) playerid=%d",
-                requiredSize, currentCtx->maxTextDraws, playerId);
-            return false;
-        }
-
-        // Overflow-safe capacity comparison using widened 64-bit space
-        uint64_t total = static_cast<uint64_t>(currentCtx->activeTextDrawCount) + static_cast<uint64_t>(requiredSize);
-        if (total <= static_cast<uint64_t>(currentCtx->evictionThreshold) && total <= static_cast<uint64_t>(currentCtx->maxTextDraws))
-        {
-            Debug("EnsureCapacity OK playerid=%d active=%u required=%u threshold=%u max=%u",
-                playerId,
-                currentCtx->activeTextDrawCount,
-                requiredSize,
-                currentCtx->evictionThreshold,
-                currentCtx->maxTextDraws
-            );
-            return true;
-        }
-
-        Debug("EnsureCapacity needs eviction playerid=%d active=%u required=%u threshold=%u",
-            playerId,
-            currentCtx->activeTextDrawCount,
-            requiredSize,
-            currentCtx->evictionThreshold
-        );
-
-        // EvictOneHiddenGroup executes callbacks that may mutate player/group maps
-        if (!EvictOneHiddenGroup(*currentCtx))
-        {
-            // Re-check after eviction failure
-            auto* checkCtx = GetPlayerContext(playerId);
-            uint32_t activeTD = checkCtx ? checkCtx->activeTextDrawCount : 0;
-            uint32_t threshold = checkCtx ? checkCtx->evictionThreshold : 0;
-
-            Debug("EnsureCapacity failed: no evictable group playerid=%d active=%u required=%u threshold=%u",
-                playerId,
-                activeTD,
-                requiredSize,
-                threshold
-            );
-            return false;
-        }
-    }
-}
-
-bool SUICore::EvictOneHiddenGroup(PlayerContext& ctx)
-{
-    int playerId = ctx.playerId;
-    std::string candidateName;
-    uint64_t candidateInstanceId = 0;
-    uint8_t candidatePriority = 0;
-    uint64_t candidateLastUsed = 0;
-    bool foundCandidate = false;
-
-    // Identify candidate by stable group name key and instanceId
-    for (auto& [groupName, group] : ctx.groups)
+    for (const auto& [groupName, group] : ctx.groups)
     {
         if (!group.isCreated)
             continue;
@@ -1286,37 +1218,43 @@ bool SUICore::EvictOneHiddenGroup(PlayerContext& ctx)
         if (group.priority >= SUI_PRIORITY_CRITICAL)
             continue;
 
-        if (!foundCandidate)
-        {
-            candidateName = groupName;
-            candidateInstanceId = group.instanceId;
-            candidatePriority = group.priority;
-            candidateLastUsed = group.lastUsedTick;
-            foundCandidate = true;
-            continue;
-        }
-
-        bool betterPriority = group.priority < candidatePriority;
-        bool samePriorityOlder = (group.priority == candidatePriority) &&
-                                 (group.lastUsedTick < candidateLastUsed);
-
-        if (betterPriority || samePriorityOlder)
-        {
-            candidateName = groupName;
-            candidateInstanceId = group.instanceId;
-            candidatePriority = group.priority;
-            candidateLastUsed = group.lastUsedTick;
-        }
+        EvictionCandidate cand;
+        cand.groupName = groupName;
+        cand.instanceId = group.instanceId;
+        cand.estimatedSize = group.estimatedSize;
+        cand.priority = group.priority;
+        cand.lastUsedTick = group.lastUsedTick;
+        candidates.push_back(cand);
     }
 
-    if (!foundCandidate)
+    std::sort(candidates.begin(), candidates.end(), [](const EvictionCandidate& a, const EvictionCandidate& b) {
+        if (a.priority != b.priority)
+        {
+            return a.priority < b.priority;
+        }
+        if (a.lastUsedTick != b.lastUsedTick)
+        {
+            return a.lastUsedTick < b.lastUsedTick;
+        }
+        return a.groupName < b.groupName;
+    });
+
+    return candidates;
+}
+
+bool SUICore::EvictCandidate(PlayerContext& ctx, const EvictionCandidate& cand)
+{
+    int playerId = ctx.playerId;
+
+    // Re-acquire candidate before callback using instanceId
+    auto* candidate = GetPlayerGroupIfInstance(playerId, cand.groupName, cand.instanceId);
+    if (!candidate)
     {
         return false;
     }
 
-    // Re-acquire candidate before callback using instanceId
-    auto* candidate = GetPlayerGroupIfInstance(playerId, candidateName, candidateInstanceId);
-    if (!candidate)
+    if (!candidate->isCreated || candidate->isVisible || candidate->isExecutingCallback ||
+        !candidate->evictable || candidate->priority >= SUI_PRIORITY_CRITICAL)
     {
         return false;
     }
@@ -1324,10 +1262,10 @@ bool SUICore::EvictOneHiddenGroup(PlayerContext& ctx)
     std::string cbDestroy = candidate->cbDestroy;
     AMX* ownerAmx = candidate->ownerAmx;
 
-    Debug("EvictOneHiddenGroup selected playerid=%d group=%s instance=%llu priority=%u evictable=%d lastUsed=%llu size=%u",
+    Debug("EvictCandidate selected playerid=%d group=%s instance=%llu priority=%u evictable=%d lastUsed=%llu size=%u",
         playerId,
-        candidateName.c_str(),
-        static_cast<unsigned long long>(candidateInstanceId),
+        cand.groupName.c_str(),
+        static_cast<unsigned long long>(cand.instanceId),
         static_cast<unsigned>(candidate->priority),
         candidate->evictable ? 1 : 0,
         static_cast<unsigned long long>(candidate->lastUsedTick),
@@ -1344,16 +1282,16 @@ bool SUICore::EvictOneHiddenGroup(PlayerContext& ctx)
     auto* postCtx = GetPlayerContext(playerId);
     if (!postCtx)
     {
-        Debug("EvictOneHiddenGroup player removed during callback playerid=%d group=%s",
-            playerId, candidateName.c_str());
+        Debug("EvictCandidate player removed during callback playerid=%d group=%s",
+            playerId, cand.groupName.c_str());
         return false;
     }
 
-    auto* postCandidate = GetPlayerGroupIfInstance(playerId, candidateName, candidateInstanceId);
+    auto* postCandidate = GetPlayerGroupIfInstance(playerId, cand.groupName, cand.instanceId);
     if (!postCandidate)
     {
-        Debug("[SUI] EvictOneHiddenGroup candidate replaced or removed during callback playerid=%d group=%s old=%llu",
-            playerId, candidateName.c_str(), static_cast<unsigned long long>(candidateInstanceId));
+        Debug("[SUI] EvictCandidate candidate replaced or removed during callback playerid=%d group=%s old=%llu",
+            playerId, cand.groupName.c_str(), static_cast<unsigned long long>(cand.instanceId));
         return false;
     }
 
@@ -1361,10 +1299,10 @@ bool SUICore::EvictOneHiddenGroup(PlayerContext& ctx)
 
     if (!destroyed)
     {
-        Debug("EvictOneHiddenGroup failed destroy callback playerid=%d group=%s instance=%llu callback=%s",
+        Debug("EvictCandidate failed destroy callback playerid=%d group=%s instance=%llu callback=%s",
             playerId,
-            candidateName.c_str(),
-            static_cast<unsigned long long>(candidateInstanceId),
+            cand.groupName.c_str(),
+            static_cast<unsigned long long>(cand.instanceId),
             cbDestroy.c_str()
         );
         return false;
@@ -1372,14 +1310,134 @@ bool SUICore::EvictOneHiddenGroup(PlayerContext& ctx)
 
     MarkGroupDestroyed(*postCtx, *postCandidate);
 
-    Debug("EvictOneHiddenGroup success playerid=%d group=%s instance=%llu activeTD=%u",
+    Debug("EvictCandidate success playerid=%d group=%s instance=%llu activeTD=%u",
         playerId,
-        candidateName.c_str(),
-        static_cast<unsigned long long>(candidateInstanceId),
+        cand.groupName.c_str(),
+        static_cast<unsigned long long>(cand.instanceId),
         postCtx->activeTextDrawCount
     );
 
     return true;
+}
+
+bool SUICore::EvictOneHiddenGroup(PlayerContext& ctx)
+{
+    auto candidates = CollectEligibleEvictionCandidates(ctx);
+    if (candidates.empty())
+    {
+        return false;
+    }
+    return EvictCandidate(ctx, candidates.front());
+}
+
+bool SUICore::EnsureCapacity(PlayerContext& ctx, uint32_t requiredSize)
+{
+    int playerId = ctx.playerId;
+
+    if (requiredSize == 0)
+    {
+        requiredSize = 1;
+    }
+
+    auto* currentCtx = GetPlayerContext(playerId);
+    if (!currentCtx || currentCtx->teardownState != PlayerTeardownState::None)
+    {
+        return false;
+    }
+
+    if (requiredSize > currentCtx->maxTextDraws)
+    {
+        Debug("EnsureCapacity failed: requiredSize (%u) exceeds maxTextDraws (%u) playerid=%d",
+            requiredSize, currentCtx->maxTextDraws, playerId);
+        return false;
+    }
+
+    // Keep track of attempted candidate instance IDs so we don't attempt the same failed candidate in an infinite loop
+    std::vector<std::pair<std::string, uint64_t>> attemptedCandidates;
+
+    while (true)
+    {
+        currentCtx = GetPlayerContext(playerId);
+        if (!currentCtx || currentCtx->teardownState != PlayerTeardownState::None)
+        {
+            return false;
+        }
+
+        uint64_t total = static_cast<uint64_t>(currentCtx->activeTextDrawCount) + static_cast<uint64_t>(requiredSize);
+        uint64_t targetCeiling = std::min(static_cast<uint64_t>(currentCtx->evictionThreshold), static_cast<uint64_t>(currentCtx->maxTextDraws));
+
+        if (total <= targetCeiling)
+        {
+            Debug("EnsureCapacity OK playerid=%d active=%u required=%u threshold=%u max=%u",
+                playerId,
+                currentCtx->activeTextDrawCount,
+                requiredSize,
+                currentCtx->evictionThreshold,
+                currentCtx->maxTextDraws
+            );
+            return true;
+        }
+
+        uint64_t capacityNeeded = total - targetCeiling;
+
+        Debug("EnsureCapacity needs eviction playerid=%d active=%u required=%u threshold=%u targetCeiling=%llu needed=%llu",
+            playerId,
+            currentCtx->activeTextDrawCount,
+            requiredSize,
+            currentCtx->evictionThreshold,
+            static_cast<unsigned long long>(targetCeiling),
+            static_cast<unsigned long long>(capacityNeeded)
+        );
+
+        auto candidates = CollectEligibleEvictionCandidates(*currentCtx);
+
+        // Filter out any candidates that have already been attempted
+        std::vector<EvictionCandidate> viableCandidates;
+        uint64_t totalEligibleCapacity = 0;
+        for (const auto& cand : candidates)
+        {
+            bool alreadyAttempted = false;
+            for (const auto& att : attemptedCandidates)
+            {
+                if (att.first == cand.groupName && att.second == cand.instanceId)
+                {
+                    alreadyAttempted = true;
+                    break;
+                }
+            }
+            if (!alreadyAttempted)
+            {
+                viableCandidates.push_back(cand);
+                totalEligibleCapacity += cand.estimatedSize;
+            }
+        }
+
+        // PREFLIGHT CHECK: Can viable candidates satisfy the needed capacity?
+        if (totalEligibleCapacity < capacityNeeded)
+        {
+            Debug("EnsureCapacity preflight failed: total eligible capacity (%llu) < capacity needed (%llu) playerid=%d active=%u required=%u threshold=%u",
+                static_cast<unsigned long long>(totalEligibleCapacity),
+                static_cast<unsigned long long>(capacityNeeded),
+                playerId,
+                currentCtx->activeTextDrawCount,
+                requiredSize,
+                currentCtx->evictionThreshold
+            );
+            return false;
+        }
+
+        const auto& nextToEvict = viableCandidates.front();
+        attemptedCandidates.push_back({nextToEvict.groupName, nextToEvict.instanceId});
+
+        if (!EvictCandidate(*currentCtx, nextToEvict))
+        {
+            Debug("EnsureCapacity: candidate eviction failed or group was mutated during callback playerid=%d group=%s instance=%llu",
+                playerId,
+                nextToEvict.groupName.c_str(),
+                static_cast<unsigned long long>(nextToEvict.instanceId)
+            );
+        }
+    }
 }
 
 bool SUICore::DestroyGroup(int playerId, const std::string& groupName)
