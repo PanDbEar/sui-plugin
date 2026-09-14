@@ -63,8 +63,8 @@ struct SUIGroup
     std::string cbHide;
     bool isCreated = false;
     bool isVisible = false;
-    uint32_t hiddenSinceTick = 0;
-    uint32_t lastUsedTick = 0;
+    uint64_t hiddenSinceTick = 0;
+    uint64_t lastUsedTick = 0;
     uint32_t idleTimeoutMs = 30000;
     uint32_t estimatedSize = 1;           // Logical capacity consumption
     uint8_t priority = SUI_PRIORITY_NORMAL;
@@ -314,6 +314,12 @@ To ensure deterministic lifetime management, SUI establishes the following rules
   - Leaves `hiddenSinceTick = 0` and allocates zero capacity.
 - **Zero Idle Timeout (`idleTimeoutMs == 0`)**:
   - A group configured with zero idle timeout is permitted to be destroyed on the very first tick after entering hidden state, representing intentional instantaneous idle collection.
+
+### 8.3. Monotonic Timestamp Domain & Width Invariants
+- **Monotonic 64-bit Domain**: All lifecycle timestamps (`hiddenSinceTick`, `lastUsedTick`, `Utils::GetTickCountMs()`, `ProcessTick::currentTick`, `EvictionCandidate::lastUsedTick`) are strictly defined as unsigned 64-bit integers (`uint64_t`) representing monotonic milliseconds since epoch (`std::chrono::steady_clock`).
+- **Wrap-Free Arithmetic**: A 64-bit millisecond counter requires $2^{64}$ milliseconds ($\approx 584$ million years) to wrap. Practical overflow, signed/unsigned wrap, or modular boundary inversion cannot occur during server runtime.
+- **Consistent LRU Eviction Ordering**: Because `lastUsedTick` is evaluated directly in `uint64_t` space (`a.lastUsedTick < b.lastUsedTick`), long server uptimes can never cause age ordering inversions.
+- **Sentinel Semantics**: State presence is governed strictly by lifecycle flags (`isCreated`, `isVisible`, and `isExecutingCallback`). `hiddenSinceTick` is non-zero whenever a group is created and hidden. `ProcessTick` directly evaluates `(currentTick - group.hiddenSinceTick) > group.idleTimeoutMs` on created-hidden groups without sentinel ambiguity.
 
 
 

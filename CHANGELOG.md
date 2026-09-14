@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     - If the group was freshly created (`!wasCreatedBeforeShow && postGroup->isCreated && !postGroup->isVisible`), explicitly initialized `postGroup->hiddenSinceTick = now` and `postGroup->lastUsedTick = now`. This eliminates the historical SUI-008 defect where uninitialized `hiddenSinceTick == 0` caused `ProcessTick` to immediately auto-destroy the group on the very next server tick (~millions of ms elapsed).
     - If the group was already created and hidden prior to `ShowGroup` (`wasCreatedBeforeShow == true`), preserved the established `postGroup->hiddenSinceTick` untouched, maintaining continuous hidden interval accounting without granting an unearned timeout extension.
   - In `HideGroup`: on hide success, initialized `hiddenSinceTick = now; lastUsedTick = now;`. On hide failure, left group visible with `hiddenSinceTick = 0`.
-  - In `ProcessTick`: evaluates idle timeout exclusively against groups with `isCreated && !isVisible && hiddenSinceTick > 0` (or `idleTimeoutMs == 0`).
+  - In `ProcessTick`: evaluates idle timeout against created-hidden groups using monotonic 64-bit millisecond timestamps (`(currentTick - group.hiddenSinceTick) > group.idleTimeoutMs`), guaranteeing zero narrowing or tick wrap across server uptimes.
   - Zero Pawn native signatures were changed; public API remained strictly backward-compatible.
   - Verified live runtime execution on 32-bit Linux SA-MP dedicated server (`samp03svr`) with dedicated test suite `tests/show_failure_lifecycle/` passing 10/10 test scenarios (F1–F10).
   - Verified cumulative 127 / 127 passing assertions across all 9 permanent regression suites with 0 crashes, 0 memory corruption, and zero accounting drift.

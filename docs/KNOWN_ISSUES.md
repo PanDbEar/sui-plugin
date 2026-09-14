@@ -142,11 +142,11 @@
     - If the group was freshly created (`!wasCreatedBeforeShow && postGroup->isCreated && !postGroup->isVisible`), explicitly initialized `postGroup->hiddenSinceTick = now` and `postGroup->lastUsedTick = now`. This ensures the newly created-hidden group survives until its configured `idleTimeoutMs` elapses.
     - If the group was already created and hidden prior to `ShowGroup` (`wasCreatedBeforeShow == true`), preserved the established `postGroup->hiddenSinceTick` untouched to maintain continuous hidden interval accounting without granting an unearned timeout extension.
   - In `HideGroup`: on hide success, initialized `hiddenSinceTick = now; lastUsedTick = now;`. On hide failure, left group visible with `hiddenSinceTick = 0`.
-  - In `ProcessTick`: evaluates idle timeout exclusively against groups with `isCreated && !isVisible && hiddenSinceTick > 0` (or `idleTimeoutMs == 0`).
+  - In `ProcessTick`: evaluates idle timeout against created-hidden groups using monotonic 64-bit millisecond timestamps (`(currentTick - group.hiddenSinceTick) > group.idleTimeoutMs`). All lifecycle timestamps (`hiddenSinceTick`, `lastUsedTick`, `GetTickCountMs`, `currentTick`) use `uint64_t` with zero narrowing or wrap-around risk.
   - Zero Pawn native signatures were changed; public API remained strictly backward-compatible.
 - **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/show_failure_lifecycle/show_failure_lifecycle.pwn` across scenarios F1 through F10 (10/10 PASS). Re-verified zero regressions across all 8 existing permanent test suites (`reentrancy_regression`, `amx_ownership`, `native_validation`, `capacity_arithmetic`, `callback_semantics`, `player_teardown`, `group_identity`, `eviction_preflight`), achieving a cumulative 127 / 127 PASS (100%) permanent runtime test baseline.
 - **Evidence:** `src/Core.cpp:419-422, 579-612`, `tests/show_failure_lifecycle/`.
-- **Planned phase:** Phase 10
+- **Planned phase:** Phase 10 / Phase 10.1
 
 ---
 

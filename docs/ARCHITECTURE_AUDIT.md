@@ -224,10 +224,11 @@ If a player requested capacity exceeding `min(evictionThreshold, maxTextDraws)` 
 3. `cbShow` fails (e.g. missing callback or AMX runtime execution error) -> `group.isVisible` remains `false`.
 4. However, `group.hiddenSinceTick` was initialized to `0` upon registration and was historically only updated in `HideGroup`.
 5. On the very next tick, `ProcessTick` checks:
-   `(currentTick - group.hiddenSinceTick) >= group.idleTimeoutMs`
+   `(currentTick - group.hiddenSinceTick) > group.idleTimeoutMs`
    Since `group.hiddenSinceTick == 0`, `currentTick - 0` is enormous (~millions of ms), immediately triggering premature auto-destruction of the newly created group on the next server tick regardless of configured timeout.
 
-#### Phase 10 Remediation (Resolved)
+#### Phase 10 & 10.1 Remediation (Resolved)
+- **Monotonic 64-bit Domain**: All lifecycle timestamps (`hiddenSinceTick`, `lastUsedTick`, `GetTickCountMs()`, `currentTick`, `EvictionCandidate::lastUsedTick`) use unsigned 64-bit integers (`uint64_t`) representing monotonic milliseconds from `std::chrono::steady_clock`. Wrap-around requires 584 million years and cannot occur during server runtime.
 - **Fresh-Create Show Failure**: SUI captures `bool wasCreatedBeforeShow = group.isCreated;` prior to `cbCreate`. If `cbCreate` succeeds but subsequent `cbShow` fails for a freshly created group (`!wasCreatedBeforeShow && postGroup->isCreated && !postGroup->isVisible`), SUI explicitly initializes:
   ```cpp
   postGroup->hiddenSinceTick = now;
