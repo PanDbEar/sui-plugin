@@ -1,6 +1,6 @@
 # SUI Runtime Test Execution Matrix
 
-This document defines the authoritative configuration, script dependencies, fixture requirements, and expected outcomes for all 9 permanent regression test suites in SUI.
+This document defines the authoritative configuration, script dependencies, fixture requirements, and expected outcomes for all 10 permanent regression test suites in SUI.
 
 ---
 
@@ -17,8 +17,9 @@ This document defines the authoritative configuration, script dependencies, fixt
 | **group_identity** | `group_identity` | `group_identity_filterscript` | *(none)* | 25 | 25 / 25 PASS | Yes |
 | **eviction_preflight** | `eviction_preflight` | `eviction_preflight_filterscript` | *(none)* | 15 | 15 / 15 PASS | Yes |
 | **show_failure_lifecycle** | `show_failure_lifecycle` | *(none)* | *(none)* | 10 | 10 / 10 PASS | Yes |
+| **player_id_validation** | `player_id_validation` | *(none)* | *(none)* | 14 | 14 / 14 PASS | Yes |
 
-**Total Permanent Suite Pass Rate:** **127 / 127 PASS (100%)**
+**Total Permanent Suite Pass Rate:** **141 / 141 PASS (100%)**
 
 ---
 
@@ -111,6 +112,19 @@ This document defines the authoritative configuration, script dependencies, fixt
   6. Failed create leaves group uncreated without starting hidden interval.
 - **Assertions:** F1–F10 (10 tests)
 - **Exit Behavior:** Server automatically terminates via RCON upon completing F10.
+
+### 10. player_id_validation
+- **Target Issue:** SUI-009 (Player ID Domain Validation, Phantom PlayerContext Prevention, and Native Trust-Boundary Hardening)
+- **Gamemode:** `tests/player_id_validation/player_id_validation.pwn`
+- **Filterscripts:** None
+- **Key Invariants:**
+  1. Authoritative Domain: Only numeric player IDs `0 <= playerId < 1000` (`SUI_MAX_PLAYERS = 1000`) are accepted across all 18 player-accepting Pawn natives.
+  2. Immediate Native Rejection: Out-of-bounds IDs (negative numbers, `>= 1000`, `INVALID_PLAYER_ID = 65535`, `cellmin`, `cellmax`) are rejected immediately after `CheckParams` and before any AMX string resolution or core dispatch.
+  3. Safe Native Return Defaults: Rejected player-accepting operations return `0` (or `false`) without logging spurious string or lookup errors.
+  4. Phantom Context Prevention: Core lookups via `GetPlayerContext(playerId)` return `nullptr` for invalid IDs; setter methods (`RegisterFactoryGroup`, `SetMaxTextDraws`, `SetEvictionThreshold`) and query methods never create default-constructed entries in `players` map for out-of-bounds IDs.
+  5. Teardown Idempotency & Rejection: `CleanupPlayer` and `ResetPlayer` return `0` for invalid player IDs, while returning `1` for valid player IDs that have no instantiated context.
+- **Assertions:** PV1–PV14 (14 tests)
+- **Exit Behavior:** Server automatically terminates via RCON upon completing PV14.
 
 ---
 

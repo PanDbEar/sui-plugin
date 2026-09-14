@@ -134,6 +134,9 @@ void SUICore::UnloadAmx(AMX* amx)
 
 PlayerContext* SUICore::GetPlayerContext(int playerId)
 {
+    if (!Utils::IsValidPlayerId(playerId))
+        return nullptr;
+
     auto it = players.find(playerId);
     return (it != players.end()) ? &it->second : nullptr;
 }
@@ -291,6 +294,12 @@ bool SUICore::RegisterFactoryGroup(
     const std::string& cbHide
 )
 {
+    if (!Utils::IsValidPlayerId(playerId))
+    {
+        Debug("RegisterFactoryGroup rejected: invalid playerId=%d", playerId);
+        return false;
+    }
+
     if (!amx)
     {
         Debug("RegisterFactoryGroup failed: null amx instance playerid=%d group=%s", playerId, group.c_str());
@@ -768,6 +777,12 @@ void SUICore::SetIdleTimeout(int playerId, const std::string& groupName, uint32_
 
 bool SUICore::CleanupPlayer(int playerId)
 {
+    if (!Utils::IsValidPlayerId(playerId))
+    {
+        Debug("CleanupPlayer rejected: invalid playerId=%d", playerId);
+        return false;
+    }
+
     auto itPlayer = players.find(playerId);
     if (itPlayer == players.end())
     {
@@ -861,6 +876,12 @@ bool SUICore::CleanupPlayer(int playerId)
 
 bool SUICore::ResetPlayer(int playerId)
 {
+    if (!Utils::IsValidPlayerId(playerId))
+    {
+        Debug("ResetPlayer rejected: invalid playerId=%d", playerId);
+        return false;
+    }
+
     auto itPlayer = players.find(playerId);
     if (itPlayer == players.end())
     {
@@ -1009,6 +1030,11 @@ bool SUICore::SetGroupSize(int playerId, const std::string& groupName, uint32_t 
 
 uint32_t SUICore::GetActiveTextDrawCount(int playerId)
 {
+    if (!Utils::IsValidPlayerId(playerId))
+    {
+        return 0;
+    }
+
     auto it = players.find(playerId);
     if (it == players.end())
     {
@@ -1092,6 +1118,12 @@ void SUICore::SubtractActiveTextDrawCount(PlayerContext& ctx, uint32_t amount)
 
 bool SUICore::SetMaxTextDraws(int playerId, uint32_t maxCount)
 {
+    if (!Utils::IsValidPlayerId(playerId))
+    {
+        Debug("SetMaxTextDraws rejected: invalid playerId=%d", playerId);
+        return false;
+    }
+
     auto itPlayer = players.find(playerId);
     if (itPlayer != players.end() && itPlayer->second.teardownState != PlayerTeardownState::None)
     {
@@ -1135,6 +1167,12 @@ bool SUICore::SetMaxTextDraws(int playerId, uint32_t maxCount)
 
 bool SUICore::SetEvictionThreshold(int playerId, uint32_t threshold)
 {
+    if (!Utils::IsValidPlayerId(playerId))
+    {
+        Debug("SetEvictionThreshold rejected: invalid playerId=%d", playerId);
+        return false;
+    }
+
     auto itPlayer = players.find(playerId);
     if (itPlayer != players.end() && itPlayer->second.teardownState != PlayerTeardownState::None)
     {
@@ -1610,6 +1648,11 @@ bool SUICore::DestroyGroupInternal(PlayerContext& ctx, SUIGroup& group, const st
 
 bool SUICore::IsGroupCreated(int playerId, const std::string& groupName)
 {
+    if (!Utils::IsValidPlayerId(playerId))
+    {
+        return false;
+    }
+
     auto itPlayer = players.find(playerId);
     if (itPlayer == players.end())
     {
@@ -1629,6 +1672,11 @@ bool SUICore::IsGroupCreated(int playerId, const std::string& groupName)
 
 bool SUICore::IsGroupVisible(int playerId, const std::string& groupName)
 {
+    if (!Utils::IsValidPlayerId(playerId))
+    {
+        return false;
+    }
+
     auto itPlayer = players.find(playerId);
     if (itPlayer == players.end())
     {
@@ -1650,6 +1698,12 @@ void SUICore::PrintPlayerState(int playerId)
 {
     if (!logprintf)
         return;
+
+    if (!Utils::IsValidPlayerId(playerId))
+    {
+        logprintf("[SUI] PrintPlayerState: invalid playerId %d.", playerId);
+        return;
+    }
 
     auto itPlayer = players.find(playerId);
     if (itPlayer == players.end())
@@ -1719,6 +1773,11 @@ void SUICore::SetGroupEvictable(int playerId, const std::string& groupName, bool
 
 bool SUICore::IsGroupEvictable(int playerId, const std::string& groupName)
 {
+    if (!Utils::IsValidPlayerId(playerId))
+    {
+        return false;
+    }
+
     auto itPlayer = players.find(playerId);
     if (itPlayer == players.end())
     {
@@ -1738,6 +1797,12 @@ bool SUICore::IsGroupEvictable(int playerId, const std::string& groupName)
 
 bool SUICore::TouchGroup(int playerId, const std::string& groupName)
 {
+    if (!Utils::IsValidPlayerId(playerId))
+    {
+        Debug("TouchGroup rejected: invalid playerId=%d", playerId);
+        return false;
+    }
+
     auto itPlayer = players.find(playerId);
     if (itPlayer == players.end() || itPlayer->second.teardownState != PlayerTeardownState::None)
     {

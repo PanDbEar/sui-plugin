@@ -316,10 +316,40 @@ To ensure deterministic lifetime management, SUI establishes the following rules
   - A group configured with zero idle timeout is permitted to be destroyed on the very first tick after entering hidden state, representing intentional instantaneous idle collection.
 
 ### 8.3. Monotonic Timestamp Domain & Width Invariants
-- **Monotonic 64-bit Domain**: All lifecycle timestamps (`hiddenSinceTick`, `lastUsedTick`, `Utils::GetTickCountMs()`, `ProcessTick::currentTick`, `EvictionCandidate::lastUsedTick`) are strictly defined as unsigned 64-bit integers (`uint64_t`) representing monotonic milliseconds since epoch (`std::chrono::steady_clock`).
+- **Monotonic 64-bit Domain**: All lifecycle timestamps (`hiddenSinceTick`, `lastUsedTick`, `Utils::GetTickCountMs()`, `ProcessTick::currentTick`, `EvictionCandidate::lastUsedTick`) are strictly defined as unsigned 64-bit integers (`uint64_t`). SUI uses `std::chrono::steady_clock`, a steady/non-decreasing clock suitable for elapsed-time measurement. Its epoch is intentionally treated as opaque; SUI depends only on differences between time points.
 - **Wrap-Free Arithmetic**: A 64-bit millisecond counter requires $2^{64}$ milliseconds ($\approx 584$ million years) to wrap. Practical overflow, signed/unsigned wrap, or modular boundary inversion cannot occur during server runtime.
 - **Consistent LRU Eviction Ordering**: Because `lastUsedTick` is evaluated directly in `uint64_t` space (`a.lastUsedTick < b.lastUsedTick`), long server uptimes can never cause age ordering inversions.
 - **Sentinel Semantics**: State presence is governed strictly by lifecycle flags (`isCreated`, `isVisible`, and `isExecutingCallback`). `hiddenSinceTick` is non-zero whenever a group is created and hidden. `ProcessTick` directly evaluates `(currentTick - group.hiddenSinceTick) > group.idleTimeoutMs` on created-hidden groups without sentinel ambiguity.
+
+---
+
+## 9. Player ID Domain Validation & Trust Boundary Hardening (SUI-009)
+
+### 9.1. Authoritative Domain Definition
+SUI defines the authoritative player ID domain as:
+$$0 \le \text{playerId} < \text{SUI\_MAX\_PLAYERS} \quad (\text{where } \text{SUI\_MAX\_PLAYERS} = 1000)$$
+matching the legacy SA-MP 0.3.7-R2 platform limit defined in `pawno/include/a_samp.inc` (`#define MAX_PLAYERS (1000)`).
+- **Valid Player IDs**: `0` through `999` (inclusive).
+- **Invalid Domain**: Any integer `value < 0` or `value >= 1000`.
+- **Special Sentinels**: Standard disconnected sentinels such as `INVALID_PLAYER_ID` (`65535` / `0xFFFF`), `cellmin` (`-2147483648`), and `cellmax` (`2147483647`) fall strictly within the invalid domain and are rejected.
+
+### 9.2. Parameter Extraction & Validation Order
+To prevent memory leaks, address dereference errors, and phantom state allocation, all 18 public Pawn natives that accept a `playerid` enforce a strict validation sequence at the trust boundary:
+1. `Utils::CheckParams(params, expectedCount)`: Validates parameter block bounds and non-null pointers.
+2. `Utils::TryGetPlayerId(params[1], playerId)`: Validates that `params[1]` falls within `[0 .. 999]`. If validation fails, SUI immediately logs a debug warning and returns `0` (or `false`).
+3. Parameter Unpacking: String parameters (`amx_GetAddr`, `amx_GetString`) and numeric properties are extracted only after the player ID is validated. Zero string dereferences occur for invalid player IDs.
+4. `SUICore` Entry: Operation proceeds to core business logic.
+
+### 9.3. Phantom PlayerContext Prevention
+In legacy implementations, accessing unvalidated player IDs through map subscript `players[playerId]` implicitly created default-constructed `PlayerContext` objects, permanently leaking memory in `SUICore::players`. SUI-009 hardens this by:
+- Eliminating all unchecked `players[playerId]` `operator[]` lookups across setters (`SetMaxTextDraws`, `SetEvictionThreshold`) and group registration (`RegisterFactoryGroup`).
+- Guarding `SUICore::GetPlayerContext(playerId)` with `!Utils::IsValidPlayerId(playerId)` check, returning `nullptr` for any invalid ID.
+- Guarding all public `SUICore` entry points against invalid `playerId` values (defense in depth).
+
+### 9.4. Cleanup and Reset Semantic Contract
+- **Valid Player ID without Context**: If `SUI_CleanupPlayer(playerId)` or `SUI_ResetPlayer(playerId)` is called with a valid player ID (`0 <= playerId < 1000`) for which no `PlayerContext` exists (e.g. player never registered any UI), the function returns `true` (`1` in Pawn). This preserves the idempotent cleanup contract established in SUI-005.
+- **Invalid Player ID**: If called with an invalid player ID (`playerId < 0 || playerId >= 1000`), the function returns `false` (`0` in Pawn), signaling explicit rejection at the native boundary.
+
 
 
 

@@ -24,7 +24,19 @@ Used with `SUI_SetGroupPriority` and `SUI_RegisterGroup` to determine eviction o
 
 ---
 
-## 2. Lifecycle Natives
+## 2. Player ID Domain & Boundary Hardening
+
+All player-accepting Pawn natives strictly validate the `playerid` parameter at the outer native boundary before parameter decoding, memory dereferencing, or internal state mutation:
+- **Authoritative Domain**: `0 <= playerid < 1000` (matching SA-MP 0.3.7-R2 `MAX_PLAYERS = 1000`).
+- **Validation Order**: `CheckParams` -> `TryGetPlayerId` -> other parameter extraction -> `SUICore` dispatch.
+- **Rejection Policy**: Values outside `[0..999]` (including negative numbers, `cellmin`, `INVALID_PLAYER_ID` / `65535`, `1000`, and `cellmax`) immediately fail with return code `0` (or `false`), bypassing string decoding and preventing phantom `PlayerContext` map allocations.
+- **Cleanup / Reset Semantics**:
+  - Valid player ID without existing context: Returns `1` (idempotent success, preserving SUI-005).
+  - Invalid player ID: Returns `0` (boundary rejection).
+
+---
+
+## 3. Lifecycle Natives
 
 ### `SUI_CreatePlayerFactoryGroup`
 ```pawn
@@ -106,7 +118,7 @@ Performs non-terminal reset of all SUI groups and counters for an active connect
 
 ---
 
-## 3. Configuration & Capacity Natives
+## 4. Configuration & Capacity Natives
 
 ### `SUI_SetIdleTimeout`
 ```pawn
@@ -172,7 +184,7 @@ Enables or disables automatic capacity eviction for the specified group.
 
 ---
 
-## 4. State & Inspection Natives
+## 5. State & Inspection Natives
 
 ### `SUI_IsGroupCreated`
 ```pawn
@@ -230,7 +242,7 @@ Enables or disables plugin-level debug output to server logs.
 
 ---
 
-## 5. Helper Stocks
+## 6. Helper Stocks
 
 ### `SUI_RegisterGroup`
 ```pawn

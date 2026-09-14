@@ -18,6 +18,20 @@ namespace Utils {
         return (params[0] / static_cast<cell>(sizeof(cell))) >= expected;
     }
 
+    constexpr int SUI_MAX_PLAYERS = 1000;
+
+    inline bool IsValidPlayerId(int playerId) {
+        return playerId >= 0 && playerId < SUI_MAX_PLAYERS;
+    }
+
+    inline bool TryGetPlayerId(cell value, int& out) {
+        if (value < 0 || value >= static_cast<cell>(SUI_MAX_PLAYERS)) {
+            return false;
+        }
+        out = static_cast<int>(value);
+        return true;
+    }
+
     inline bool TryGetNonNegativeUInt32(cell value, uint32_t& out) {
         if (value < 0) {
             return false;

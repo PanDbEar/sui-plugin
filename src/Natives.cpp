@@ -16,7 +16,13 @@ cell AMX_NATIVE_CALL Natives::SUI_CreatePlayerFactoryGroup(AMX* amx, cell* param
 {
     if (!Utils::CheckParams(params, 6)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_CreatePlayerFactoryGroup rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     std::string group, cbCreate, cbDestroy, cbShow, cbHide;
 
     if (!Utils::TryGetStringParam(amx, params[2], group) ||
@@ -40,7 +46,13 @@ cell AMX_NATIVE_CALL Natives::SUI_ShowGroup(AMX* amx, cell* params)
         return 0;
     }
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_ShowGroup rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     std::string group;
     if (!Utils::TryGetStringParam(amx, params[2], group))
     {
@@ -58,7 +70,13 @@ cell AMX_NATIVE_CALL Natives::SUI_HideGroup(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 2)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_HideGroup rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     std::string group;
     if (!Utils::TryGetStringParam(amx, params[2], group))
     {
@@ -74,7 +92,13 @@ cell AMX_NATIVE_CALL Natives::SUI_SetIdleTimeout(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 3)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_SetIdleTimeout rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     std::string group;
     if (!Utils::TryGetStringParam(amx, params[2], group))
     {
@@ -96,14 +120,27 @@ cell AMX_NATIVE_CALL Natives::SUI_SetIdleTimeout(AMX* amx, cell* params)
 cell AMX_NATIVE_CALL Natives::SUI_CleanupPlayer(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 1)) return 0;
-    return SUICore::CleanupPlayer(params[1]) ? 1 : 0;
+
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_CleanupPlayer rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
+    return SUICore::CleanupPlayer(playerId) ? 1 : 0;
 }
 
 cell AMX_NATIVE_CALL Natives::SUI_ResetPlayer(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 1)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_ResetPlayer rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
 
     return SUICore::ResetPlayer(playerId) ? 1 : 0;
 }
@@ -112,7 +149,13 @@ cell AMX_NATIVE_CALL Natives::SUI_SetGroupSize(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 3)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_SetGroupSize rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     std::string group;
     if (!Utils::TryGetStringParam(amx, params[2], group))
     {
@@ -134,7 +177,13 @@ cell AMX_NATIVE_CALL Natives::SUI_GetActiveTextDrawCount(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 1)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_GetActiveTextDrawCount rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     return static_cast<cell>(SUICore::GetActiveTextDrawCount(playerId));
 }
 
@@ -142,7 +191,13 @@ cell AMX_NATIVE_CALL Natives::SUI_SetMaxTextDraws(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 2)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_SetMaxTextDraws rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     uint32_t maxCount = 0;
     if (!Utils::TryGetNonNegativeUInt32(params[2], maxCount))
     {
@@ -157,7 +212,13 @@ cell AMX_NATIVE_CALL Natives::SUI_SetEvictionThreshold(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 2)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_SetEvictionThreshold rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     uint32_t threshold = 0;
     if (!Utils::TryGetNonNegativeUInt32(params[2], threshold))
     {
@@ -172,7 +233,13 @@ cell AMX_NATIVE_CALL Natives::SUI_SetGroupPriority(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 3)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_SetGroupPriority rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     std::string group;
     if (!Utils::TryGetStringParam(amx, params[2], group))
     {
@@ -195,7 +262,13 @@ cell AMX_NATIVE_CALL Natives::SUI_DestroyGroup(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 2)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_DestroyGroup rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     std::string group;
     if (!Utils::TryGetStringParam(amx, params[2], group))
     {
@@ -210,7 +283,13 @@ cell AMX_NATIVE_CALL Natives::SUI_IsGroupCreated(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 2)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_IsGroupCreated rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     std::string group;
     if (!Utils::TryGetStringParam(amx, params[2], group))
     {
@@ -225,7 +304,13 @@ cell AMX_NATIVE_CALL Natives::SUI_IsGroupVisible(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 2)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_IsGroupVisible rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     std::string group;
     if (!Utils::TryGetStringParam(amx, params[2], group))
     {
@@ -240,7 +325,12 @@ cell AMX_NATIVE_CALL Natives::SUI_PrintPlayerState(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 1)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_PrintPlayerState rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
 
     SUICore::PrintPlayerState(playerId);
     return 1;
@@ -250,7 +340,13 @@ cell AMX_NATIVE_CALL Natives::SUI_SetGroupEvictable(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 3)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_SetGroupEvictable rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     std::string group;
     if (!Utils::TryGetStringParam(amx, params[2], group))
     {
@@ -268,7 +364,13 @@ cell AMX_NATIVE_CALL Natives::SUI_IsGroupEvictable(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 2)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_IsGroupEvictable rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     std::string group;
     if (!Utils::TryGetStringParam(amx, params[2], group))
     {
@@ -283,7 +385,13 @@ cell AMX_NATIVE_CALL Natives::SUI_TouchGroup(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 2)) return 0;
 
-    int playerId = params[1];
+    int playerId = 0;
+    if (!Utils::TryGetPlayerId(params[1], playerId))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_TouchGroup rejected invalid playerId=%d", params[1]);
+        return 0;
+    }
+
     std::string group;
     if (!Utils::TryGetStringParam(amx, params[2], group))
     {

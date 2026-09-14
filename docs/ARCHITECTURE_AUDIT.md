@@ -228,7 +228,7 @@ If a player requested capacity exceeding `min(evictionThreshold, maxTextDraws)` 
    Since `group.hiddenSinceTick == 0`, `currentTick - 0` is enormous (~millions of ms), immediately triggering premature auto-destruction of the newly created group on the next server tick regardless of configured timeout.
 
 #### Phase 10 & 10.1 Remediation (Resolved)
-- **Monotonic 64-bit Domain**: All lifecycle timestamps (`hiddenSinceTick`, `lastUsedTick`, `GetTickCountMs()`, `currentTick`, `EvictionCandidate::lastUsedTick`) use unsigned 64-bit integers (`uint64_t`) representing monotonic milliseconds from `std::chrono::steady_clock`. Wrap-around requires 584 million years and cannot occur during server runtime.
+- **Monotonic 64-bit Domain**: All lifecycle timestamps (`hiddenSinceTick`, `lastUsedTick`, `GetTickCountMs()`, `currentTick`, `EvictionCandidate::lastUsedTick`) use unsigned 64-bit integers (`uint64_t`). SUI uses `std::chrono::steady_clock`, a steady/non-decreasing clock suitable for elapsed-time measurement. Its epoch is intentionally treated as opaque; SUI depends only on differences between time points. Wrap-around requires 584 million years and cannot occur during server runtime.
 - **Fresh-Create Show Failure**: SUI captures `bool wasCreatedBeforeShow = group.isCreated;` prior to `cbCreate`. If `cbCreate` succeeds but subsequent `cbShow` fails for a freshly created group (`!wasCreatedBeforeShow && postGroup->isCreated && !postGroup->isVisible`), SUI explicitly initializes:
   ```cpp
   postGroup->hiddenSinceTick = now;
@@ -243,19 +243,28 @@ If a player requested capacity exceeding `min(evictionThreshold, maxTextDraws)` 
 
 ---
 
-### 3.7. LOW: Unbounded Player ID & Context Map Insertion
+### 3.7. LOW: Unchecked Player ID Domain & Phantom PlayerContext Creation (SUI-009 — Resolved)
 
-**Location:** `src/Natives.cpp`, `src/Core.cpp:390-520`.
+**Location:** `src/Natives.cpp`, `src/Core.cpp`, `src/Utils.hpp`.
 
-#### Mechanism
-- Multiple natives accept `int playerId` without validating whether `playerId >= 0` and `playerId < MAX_PLAYERS`.
-- Functions like `SetGroupSize`, `SetGroupPriority`, and `SetMaxTextDraws` perform:
-  `auto& ctx = players[playerId];`
-- If an invalid player ID is queried, `std::unordered_map::operator[]` default-constructs an empty `PlayerContext` in `players`, permanently consuming memory.
+#### Mechanism (Historical Defect)
+- Multiple natives accepted `int playerId` without validating whether `0 <= playerId < SUI_MAX_PLAYERS (1000)`.
+- Setters (`SetMaxTextDraws`, `SetEvictionThreshold`) and group registration (`RegisterFactoryGroup`) used `auto& ctx = players[playerId];`.
+- If an invalid player ID (e.g. `-1`, `1000`, `INVALID_PLAYER_ID`) was passed, `std::unordered_map::operator[]` default-constructed an empty `PlayerContext` in `players`, permanently consuming memory.
+- Furthermore, string arguments were decoded and memory addresses translated before player IDs were validated, creating an unnecessary attack surface.
 
-#### Recommended Phase 1 Remediation
-- Add validation helper `Utils::IsValidPlayerId(playerId)`.
-- Use `find()` instead of `operator[]` for mutation and query operations when the player does not yet exist.
+#### Phase 11 Remediation (Resolved)
+- **Authoritative Domain**: Defined `SUI_MAX_PLAYERS = 1000`, enforcing valid player ID range `0 <= playerId < 1000` (`0 .. 999`), matching SA-MP 0.3.7-R2 platform limit in `pawno/include/a_samp.inc`.
+- **Validation Helpers**: Added `Utils::IsValidPlayerId(int playerId)` and `Utils::TryGetPlayerId(cell value, int& out)` in `src/Utils.hpp`.
+- **Native Trust-Boundary Hardening**: Updated all 18 player-accepting public Pawn natives in `src/Natives.cpp` to validate `playerId` immediately after `CheckParams` and before any string extraction or Core dispatch. Invalid IDs return `0` (or `false`) immediately.
+- **Phantom PlayerContext Prevention**:
+  - Guarded `RegisterFactoryGroup`, `SetMaxTextDraws`, and `SetEvictionThreshold` in `src/Core.cpp` with `!Utils::IsValidPlayerId(playerId)` checks before accessing `players[playerId]`.
+  - Guarded `SUICore::GetPlayerContext(playerId)` to return `nullptr` for any invalid ID.
+  - Hardened all SUICore inspection and mutation methods (`CleanupPlayer`, `ResetPlayer`, `GetActiveTextDrawCount`, `IsGroupCreated`, `IsGroupVisible`, `IsGroupEvictable`, `TouchGroup`, `PrintPlayerState`) against invalid player IDs.
+- **Cleanup and Reset Semantics**:
+  - Valid player ID with no existing context returns `1` (idempotent success, preserving SUI-005).
+  - Invalid player ID returns `0` (boundary rejection).
+- **Runtime Verification**: Verified across tests PV1–PV14 in `tests/player_id_validation/` (14/14 PASS). Cumulative regression baseline across all 10 suites passes 141 / 141 (100%).
 
 ---
 

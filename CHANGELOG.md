@@ -7,6 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **SUI-009**: Player ID Domain Validation, Phantom PlayerContext Prevention, and Native Trust-Boundary Hardening. Status: `FIXED — runtime player ID validation verified`.
+  - Defined authoritative player-ID domain `0 <= playerId < 1000` (`SUI_MAX_PLAYERS = 1000`) in `src/Utils.hpp` via `Utils::IsValidPlayerId(int playerId)` and `Utils::TryGetPlayerId(cell value, int& out)`.
+  - Hardened all 18 player-accepting Pawn native handlers in `src/Natives.cpp` with strict, early boundary checks immediately following `CheckParams` and before any AMX address translation or core dispatch.
+  - Out-of-bounds player IDs (negative values, `>= 1000`, `INVALID_PLAYER_ID = 65535`, `cellmin`, `cellmax`) are rejected immediately, emitting a debug warning and returning safe failure defaults (`0` or `false`) without allocating or mutating state.
+  - Eliminated phantom `PlayerContext` allocation:
+    - In `src/Core.cpp`, guarded `GetPlayerContext(playerId)` to return `nullptr` for any invalid ID.
+    - Guarded setter operations (`RegisterFactoryGroup`, `SetMaxTextDraws`, `SetEvictionThreshold`) and query operations (`GetActiveTextDrawCount`, `IsGroupCreated`, `IsGroupVisible`, `IsGroupEvictable`, `TouchGroup`, `PrintPlayerState`) against invalid player IDs, preventing map-subscript insertions into `players`.
+    - Differentiated teardown contracts in `CleanupPlayer` and `ResetPlayer`: invalid IDs return `false` (`0`), whereas valid IDs with no existing context return `true` (`1`) maintaining idempotent cleanup semantics.
+  - Preserved boundary check ordering in dual-player native `SUI_CopyPlayerGroup`: validates `sourcePlayerId` first, then `targetPlayerId`.
+  - Preserved zero changes to public Pawn native signatures in `pawn/sui.inc` and kept C++ binary exports strictly compliant with SA-MP 0.3.7-R2 legacy plugin architecture.
+  - Verified live runtime execution on 32-bit Linux SA-MP dedicated server (`samp03svr`) with dedicated test suite `tests/player_id_validation/` passing 14/14 test scenarios (PV1–PV14).
+  - Verified cumulative 141 / 141 passing assertions across all 10 permanent regression suites with 0 crashes, 0 memory corruption, and zero accounting drift.
 - **SUI-008**: Initialized hidden lifetime timestamps upon failed show, preserved continuous hidden lifetime intervals, and ensured tick-state consistency. Status: `FIXED — runtime hidden-lifecycle timing verified`.
   - In `ShowGroup`, captured `bool wasCreatedBeforeShow = group.isCreated;` prior to `cbCreate`.
   - On successful show (`cbShow` succeeds): marked `postGroup->isVisible = true`, set `postGroup->hiddenSinceTick = 0` (inactivating the hidden interval timer), and refreshed `postGroup->lastUsedTick = now`.
@@ -90,9 +102,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Replaced container traversal with stable key snapshots (`playerId`, `groupName`) and post-callback re-acquisition via `GetPlayerContext()` and `GetPlayerGroup()`.
   - Verified live runtime regression execution across all scenarios R1–R10 inside a 32-bit Linux SA-MP dedicated server (`samp03svr`).
 - **SUI-011**: Corrected AMX native registration in `AmxLoad`. Replaced non-standard `amx_FindNative` / `amx_Redirect` loop with standard `amx_Register(amx, natives, -1)`, properly resolving SUI natives in the host server's AMX native table and unblocking AMX script execution (eliminating `Run time error 19: "File or function is not found"`). Removed obsolete `#include "amx/amx2.h"` from `src/main.cpp`.
-- **SUI-009 (Partially Addressed)**: Replaced mutating `players[playerId]` `std::unordered_map::operator[]` lookups in group setters (`SetGroupSize`, `SetGroupPriority`, `SetGroupEvictable`, `SetIdleTimeout`) with defensive non-inserting `GetPlayerContext()` lookups to prevent phantom `PlayerContext` creation.
 
 ### Added
+- Created `tests/player_id_validation/TEST_PLAN.md` documenting player ID domain validation, boundary checks, and phantom context prevention test scenarios PV1 through PV14.
+- Created `tests/player_id_validation/player_id_validation.pwn` verifying negative player IDs (PV1), upper boundary IDs 999 vs 1000 (PV2–PV3), extreme sentinels INVALID_PLAYER_ID, cellmin, cellmax (PV4–PV6), parameter order preservation for dual-player native SUI_CopyPlayerGroup (PV7–PV8), phantom context prevention in setters and registrations (PV9–PV11), teardown rejection on invalid IDs with idempotent success on valid unallocated contexts (PV12–PV13), and safe default returns across all 18 player-accepting natives (PV14).
 - Created `tests/show_failure_lifecycle/TEST_PLAN.md` documenting failed-show hidden lifetime timing, continuous hidden preservation, hide transitions, and tick-state consistency test scenarios F1 through F10.
 - Created `tests/show_failure_lifecycle/show_failure_lifecycle.pwn` verifying fresh create + failed show idle preservation (F1), genuine idle expiration (F2), continuous hidden interval preservation (F3), show success timer inactivation (F4), hide success timer initiation (F5), hide failure timer isolation (F6), create failure uncreated isolation (F7), return 0 callback success treatment (F8), generation ABA safety (F9), and zero idle timeout contract (F10).
 - Created `tests/eviction_preflight/TEST_PLAN.md` documenting capacity eviction preflight, policy-minimal ordered eviction, candidate replanning, and multi-AMX ownership test scenarios E1 through E15.
@@ -113,6 +126,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Created `tests/reentrancy_regression.pwn` providing regression test coverage for re-entrant lifecycle operations across Pawn callbacks (compiled and verified with Pawn compiler 3.2.3664).
 
 ### Documentation
+- Updated `docs/API_REFERENCE.md`, `docs/ARCHITECTURE.md`, `docs/ARCHITECTURE_AUDIT.md`, `docs/KNOWN_ISSUES.md`, and `tests/RUNTIME_MATRIX.md` documenting player ID domain validation (`[0..999]`), trust-boundary hardening, phantom context prevention, teardown idempotency semantics, and live runtime test suite 10 (`player_id_validation`).
 - Updated `docs/API_REFERENCE.md`, `docs/ARCHITECTURE.md`, `docs/KNOWN_ISSUES.md`, and `docs/ARCHITECTURE_AUDIT.md` reflecting decoupled callback return semantics, `PawnCallResult` model, conservative failure policies, and cataloged SUI-018.
 - Created authoritative engineering issue tracker `docs/KNOWN_ISSUES.md` cataloging issues SUI-001 through SUI-015.
 - Created `docs/API_INVENTORY.md` synchronizing all C++ natives, parameters, helpers, and constants.

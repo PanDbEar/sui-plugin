@@ -18,7 +18,7 @@
 | **SUI-006** | Medium | Core / AMX | Callback return-value / internal state divergence | `FIXED — runtime callback semantics verified` | Phase 7 |
 | **SUI-007** | Medium | Core / Eviction | Destructive capacity eviction without pre-flight sufficiency | `FIXED — runtime eviction preflight verified` | Phase 9 |
 | **SUI-008** | Medium | Core / State Machine | Failed-show hidden timestamp/state anomaly | `FIXED — runtime hidden-lifecycle timing verified` | Phase 10 |
-| **SUI-009** | Low | Core / Validation | Player ID validation / phantom PlayerContext creation | `PARTIALLY ADDRESSED` | Phase 1 |
+| **SUI-009** | Low | Core / Validation | Player ID validation / phantom PlayerContext creation | `FIXED — runtime player ID validation verified` | Phase 11 |
 | **SUI-010** | Medium | API / Docs | Public API synchronization risk | `CONFIRMED` | Phase 0.1 / 1 |
 | **SUI-011** | High | AMX / Loading | Non-standard AMX native registration behavior | `FIXED` | Phase 2 |
 | **SUI-012** | Low | Repo / Build | Orphaned open.mp component prototype and unused header | `CONFIRMED` | Phase 3 |
@@ -154,12 +154,18 @@
 - **ID:** SUI-009
 - **Severity:** Low
 - **Area:** Core / Validation
-- **Status:** PARTIALLY ADDRESSED
-- **Phase 1 Mitigation:** Migrated group property setters (`SetGroupSize`, `SetGroupPriority`, `SetGroupEvictable`, `SetIdleTimeout`) from mutating `players[playerId]` `operator[]` lookups to defensive, non-inserting `GetPlayerContext(playerId)` queries. Querying uncreated players via these setters now gracefully fails without creating empty `PlayerContext` entries.
-- **Remaining Scope:** `RegisterFactoryGroup`, `SetMaxTextDraws`, and `SetEvictionThreshold` still use mutating `players[playerId]` `operator[]` lookups. Player ID bounds checking (`0 <= playerId < MAX_PLAYERS`) is not yet implemented across any native.
-- **Risk:** Accessing invalid or disconnected player IDs creates empty `PlayerContext` map entries that permanently consume memory.
-- **Evidence:** `src/Core.cpp:163`, `src/Core.cpp:648`, `src/Core.cpp:672`.
-- **Planned phase:** Phase 1
+- **Status:** FIXED — runtime player ID validation verified
+- **Fix Summary:**
+  - Established authoritative player ID domain $0 \le \text{playerId} < 1000$ (`SUI_MAX_PLAYERS = 1000`) matching SA-MP 0.3.7-R2 platform bounds in `a_samp.inc`.
+  - Added `Utils::IsValidPlayerId` and `Utils::TryGetPlayerId` validation helpers in `src/Utils.hpp`.
+  - Enforced outer trust-boundary validation order (`CheckParams` -> `TryGetPlayerId` -> string unpacking -> Core dispatch) across all 18 player-accepting public Pawn natives in `src/Natives.cpp`. Any invalid player ID (`< 0` or `>= 1000`, including `INVALID_PLAYER_ID`, `cellmin`, and `cellmax`) fails immediately returning `0` (or `false`) without string decoding or map insertions.
+  - Eliminated unchecked `players[playerId]` `operator[]` lookups in `RegisterFactoryGroup`, `SetMaxTextDraws`, and `SetEvictionThreshold`, preventing phantom `PlayerContext` allocation.
+  - Guarded `SUICore::GetPlayerContext(playerId)` to return `nullptr` for any invalid ID, automatically securing all internal group accessors.
+  - Hardened all SUICore inspection and mutation methods against invalid player IDs.
+  - Preserved SUI-005 idempotent cleanup semantics: `SUI_CleanupPlayer` and `SUI_ResetPlayer` return `1` for valid IDs without existing context, but return `0` for invalid player IDs.
+- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/player_id_validation/player_id_validation.pwn` across scenarios PV1 through PV14 (14/14 PASS). Verified cumulative 141 / 141 passing assertions across all 10 permanent regression test suites with zero crashes and zero regressions.
+- **Evidence:** `src/Utils.hpp:21-34`, `src/Natives.cpp:15-385`, `src/Core.cpp:134-142, 290-305, 775-785, 868-878, 1030-1165, 1645-1790`, `tests/player_id_validation/`.
+- **Planned phase:** Phase 11
 
 ---
 
