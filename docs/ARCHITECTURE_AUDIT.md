@@ -214,21 +214,31 @@ If a player requested capacity exceeding `min(evictionThreshold, maxTextDraws)` 
 
 ---
 
-### 3.6. MEDIUM: State Machine Timing Anomaly on Failed Show
+### 3.6. MEDIUM: State Machine Timing Anomaly on Failed Show (SUI-008 — Resolved)
 
-**Location:** `src/Core.cpp:145-217` (`SUICore::ShowGroup`).
+**Location:** `src/Core.cpp:419-422, 579-612` (`SUICore::ShowGroup`).
 
-#### Mechanism
+#### Mechanism (Historical Defect)
 1. A group is not yet created (`!group.isCreated`).
-2. `cbCreate` succeeds -> `group.isCreated = true`.
-3. `cbShow` fails (e.g. returns 0 or error) -> `group.isVisible` remains `false`.
-4. However, `group.hiddenSinceTick` was initialized to `0` and is only updated in `HideGroup`.
+2. In `ShowGroup`, `cbCreate` succeeds -> `group.isCreated = true` and capacity is allocated.
+3. `cbShow` fails (e.g. missing callback or AMX runtime execution error) -> `group.isVisible` remains `false`.
+4. However, `group.hiddenSinceTick` was initialized to `0` upon registration and was historically only updated in `HideGroup`.
 5. On the very next tick, `ProcessTick` checks:
-   `(currentTick - group.hiddenSinceTick) > group.idleTimeoutMs`
-   Since `group.hiddenSinceTick == 0`, `currentTick - 0` is enormous (~millions of ms), immediately triggering auto-destroy on the next server tick.
+   `(currentTick - group.hiddenSinceTick) >= group.idleTimeoutMs`
+   Since `group.hiddenSinceTick == 0`, `currentTick - 0` is enormous (~millions of ms), immediately triggering premature auto-destruction of the newly created group on the next server tick regardless of configured timeout.
 
-#### Recommended Phase 1 Remediation
-- Explicitly initialize `hiddenSinceTick = Utils::GetTickCountMs()` upon creation if the group does not become visible immediately.
+#### Phase 10 Remediation (Resolved)
+- **Fresh-Create Show Failure**: SUI captures `bool wasCreatedBeforeShow = group.isCreated;` prior to `cbCreate`. If `cbCreate` succeeds but subsequent `cbShow` fails for a freshly created group (`!wasCreatedBeforeShow && postGroup->isCreated && !postGroup->isVisible`), SUI explicitly initializes:
+  ```cpp
+  postGroup->hiddenSinceTick = now;
+  postGroup->lastUsedTick = now;
+  ```
+  This guarantees that the group enters a valid hidden lifetime interval and survives until its configured `idleTimeoutMs` genuinely elapses.
+- **Continuous Hidden Lifetime Preservation**: If the group was already created and hidden prior to `ShowGroup` (`wasCreatedBeforeShow == true`), and `cbShow` fails, SUI preserves the established `hiddenSinceTick` untouched, maintaining continuous hidden lifetime accounting without granting an unearned timeout reset.
+- **Show Success**: Successfully showing a group sets `postGroup->isVisible = true`, inactivates the hidden timer (`postGroup->hiddenSinceTick = 0`), and refreshes `postGroup->lastUsedTick = now`.
+- **Hide Transitions**: Successful hide sets `hiddenSinceTick = now; lastUsedTick = now;`. Failed hide leaves the group visible with `hiddenSinceTick = 0`.
+- **Zero Idle Timeout**: Groups configured with `idleTimeoutMs == 0` continue to be destroyed on the next tick as expected.
+- **Runtime Verification**: Verified across tests F1–F10 in `tests/show_failure_lifecycle/` (10/10 PASS). Cumulative regression baseline across all 9 suites passes 127 / 127 (100%).
 
 ---
 
@@ -352,7 +362,7 @@ Phase 6 / 6.1 introduced generation tracking but permitted in-place replacement 
 | **3.3** | AMX script ownership & multi-script collision | **HIGH** | Phase 3 (Resolved) |
 | **3.4** | Inverted return code failure trap in `CallPawnFunction` | **MEDIUM** | Phase 7 (Resolved) |
 | **3.5** | Eager & destructive capacity eviction failure (SUI-007) | **MEDIUM** | Phase 9 (Resolved) |
-| **3.6** | Immediate auto-destroy on failed show (`hiddenSinceTick == 0`) | **MEDIUM** | Phase 8 |
+| **3.6** | Immediate auto-destroy on failed show (`hiddenSinceTick == 0`) (SUI-008) | **MEDIUM** | Phase 10 (Resolved) |
 | **3.7** | Unchecked player ID & phantom context allocation | **LOW** | Phase 1/4 (Partially Resolved) |
 | **3.8** | Orphaned open.mp component code (`Component.cpp`) | **LOW** | Future |
 | **3.9** | Unsafe Pawn parameter validation and signed/unsigned conversion (SUI-003) | **HIGH** | Phase 4 (Resolved) |
@@ -375,5 +385,6 @@ Phase 6 / 6.1 introduced generation tracking but permitted in-place replacement 
 8. **Phase 7 (SUI-006)**: Decoupled callback return semantics from state transition success.
 9. **Phase 8 (SUI-005)**: Hardened player teardown transactions (`CleanupPlayer` and `ResetPlayer`), failure preservation, and re-entrant mutation blocking.
 10. **Phase 9 (SUI-007)**: Implemented non-destructive capacity eviction preflight, policy-minimal ordered eviction, and candidate-by-candidate replanning.
+11. **Phase 10 (SUI-008)**: Corrected failed-show hidden lifetime timestamps, continuous hidden interval preservation, and tick-state consistency.
 
 

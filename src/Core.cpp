@@ -419,6 +419,7 @@ bool SUICore::ShowGroup(int playerId, const std::string& groupName)
 
     auto& group = it->second;
     uint64_t instanceId = group.instanceId;
+    bool wasCreatedBeforeShow = group.isCreated;
 
     Debug("ShowGroup state playerid=%d group=%s instance=%llu isCreated=%d isVisible=%d cbCreate=%s cbShow=%s",
         playerId,
@@ -579,6 +580,7 @@ bool SUICore::ShowGroup(int playerId, const std::string& groupName)
             if (showSuccess)
             {
                 postGroup->isVisible = true;
+                postGroup->hiddenSinceTick = 0;
                 postGroup->lastUsedTick = Utils::GetTickCountMs();
 
                 Debug("Show callback success playerid=%d group=%s instance=%llu",
@@ -594,6 +596,20 @@ bool SUICore::ShowGroup(int playerId, const std::string& groupName)
                     groupName.c_str(),
                     cbShow.c_str()
                 );
+
+                if (!wasCreatedBeforeShow && postGroup->isCreated && !postGroup->isVisible)
+                {
+                    uint64_t now = Utils::GetTickCountMs();
+                    postGroup->hiddenSinceTick = now;
+                    postGroup->lastUsedTick = now;
+
+                    Debug("Show callback failure initialized hidden interval playerid=%d group=%s instance=%llu hiddenSince=%llu",
+                        playerId,
+                        groupName.c_str(),
+                        static_cast<unsigned long long>(instanceId),
+                        static_cast<unsigned long long>(now)
+                    );
+                }
             }
         }
         else

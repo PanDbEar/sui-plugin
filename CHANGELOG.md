@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **SUI-008**: Initialized hidden lifetime timestamps upon failed show, preserved continuous hidden lifetime intervals, and ensured tick-state consistency. Status: `FIXED — runtime hidden-lifecycle timing verified`.
+  - In `ShowGroup`, captured `bool wasCreatedBeforeShow = group.isCreated;` prior to `cbCreate`.
+  - On successful show (`cbShow` succeeds): marked `postGroup->isVisible = true`, set `postGroup->hiddenSinceTick = 0` (inactivating the hidden interval timer), and refreshed `postGroup->lastUsedTick = now`.
+  - On failed show (`cbShow` fails):
+    - If the group was freshly created (`!wasCreatedBeforeShow && postGroup->isCreated && !postGroup->isVisible`), explicitly initialized `postGroup->hiddenSinceTick = now` and `postGroup->lastUsedTick = now`. This eliminates the historical SUI-008 defect where uninitialized `hiddenSinceTick == 0` caused `ProcessTick` to immediately auto-destroy the group on the very next server tick (~millions of ms elapsed).
+    - If the group was already created and hidden prior to `ShowGroup` (`wasCreatedBeforeShow == true`), preserved the established `postGroup->hiddenSinceTick` untouched, maintaining continuous hidden interval accounting without granting an unearned timeout extension.
+  - In `HideGroup`: on hide success, initialized `hiddenSinceTick = now; lastUsedTick = now;`. On hide failure, left group visible with `hiddenSinceTick = 0`.
+  - In `ProcessTick`: evaluates idle timeout exclusively against groups with `isCreated && !isVisible && hiddenSinceTick > 0` (or `idleTimeoutMs == 0`).
+  - Zero Pawn native signatures were changed; public API remained strictly backward-compatible.
+  - Verified live runtime execution on 32-bit Linux SA-MP dedicated server (`samp03svr`) with dedicated test suite `tests/show_failure_lifecycle/` passing 10/10 test scenarios (F1–F10).
+  - Verified cumulative 127 / 127 passing assertions across all 9 permanent regression suites with 0 crashes, 0 memory corruption, and zero accounting drift.
 - **SUI-007**: Non-destructive capacity eviction preflight, minimal eviction planning, and re-entrant execution safety. Status: `FIXED — runtime eviction preflight verified`.
   - Implemented preflight capacity sufficiency check in `SUICore::EnsureCapacity`: before destroying any existing hidden UI group, SUI calculates total eligible capacity across all viable eviction candidates. If total eligible capacity < capacity needed to satisfy reservation ceiling (`min(evictionThreshold, maxTextDraws)`), `EnsureCapacity` returns `false` immediately, destroying zero groups, invoking zero callbacks, and preserving all existing groups and capacity tracking.
   - Implemented `SUICore::CollectEligibleEvictionCandidates`, gathering all instantiated, hidden, non-executing, evictable groups with priority < `SUI_PRIORITY_CRITICAL`.
@@ -82,6 +93,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **SUI-009 (Partially Addressed)**: Replaced mutating `players[playerId]` `std::unordered_map::operator[]` lookups in group setters (`SetGroupSize`, `SetGroupPriority`, `SetGroupEvictable`, `SetIdleTimeout`) with defensive non-inserting `GetPlayerContext()` lookups to prevent phantom `PlayerContext` creation.
 
 ### Added
+- Created `tests/show_failure_lifecycle/TEST_PLAN.md` documenting failed-show hidden lifetime timing, continuous hidden preservation, hide transitions, and tick-state consistency test scenarios F1 through F10.
+- Created `tests/show_failure_lifecycle/show_failure_lifecycle.pwn` verifying fresh create + failed show idle preservation (F1), genuine idle expiration (F2), continuous hidden interval preservation (F3), show success timer inactivation (F4), hide success timer initiation (F5), hide failure timer isolation (F6), create failure uncreated isolation (F7), return 0 callback success treatment (F8), generation ABA safety (F9), and zero idle timeout contract (F10).
+- Created `tests/eviction_preflight/TEST_PLAN.md` documenting capacity eviction preflight, policy-minimal ordered eviction, candidate replanning, and multi-AMX ownership test scenarios E1 through E15.
+- Created `tests/eviction_preflight/eviction_preflight.pwn` and `tests/eviction_preflight/eviction_preflight_filterscript.pwn` verifying insufficient capacity rejection, minimal eviction count, deterministic ordering, critical/visible/non-evictable exclusion, callback re-entrancy replanning, and multi-AMX candidate destruction.
+- Created `tests/player_teardown/TEST_PLAN.md` documenting player teardown transactions, recursion blocking, uncreated pruning, and failure preservation test scenarios T1 through T18.
+- Created `tests/player_teardown/player_teardown.pwn` and `tests/player_teardown/player_teardown_filterscript.pwn` verifying `CleanupPlayer` terminal cleanup, `ResetPlayer` non-terminal failure preservation, re-entrant mutation blocking, read-only diagnostic queries, and multi-AMX player teardown.
 - Created `tests/callback_semantics/TEST_PLAN.md` documenting Pawn callback return semantics, execution status, and lifecycle consistency test scenarios P1 through P13.
 - Created `tests/callback_semantics/callback_semantics.pwn` and `tests/callback_semantics/callback_filterscript.pwn` verifying informational return values (0, 1, 42, -1, omitted), safe handling of missing callbacks, AMX runtime execution error containment (division by zero), ABA generation safety, and cross-AMX isolation under return value 0.
 - Created `tests/group_identity/TEST_PLAN.md` documenting group identity, lifecycle reconciliation (H1–H4), and extended ABA re-entrancy test scenarios (ID1–ID10, ID-EVICT, ID-CROSS-AMX).

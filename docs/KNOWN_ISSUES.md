@@ -17,7 +17,7 @@
 | **SUI-005** | High | Core / Lifecycle | Reset/Cleanup state loss when destruction fails | `FIXED — runtime teardown regression verified` | Phase 8 |
 | **SUI-006** | Medium | Core / AMX | Callback return-value / internal state divergence | `FIXED — runtime callback semantics verified` | Phase 7 |
 | **SUI-007** | Medium | Core / Eviction | Destructive capacity eviction without pre-flight sufficiency | `FIXED — runtime eviction preflight verified` | Phase 9 |
-| **SUI-008** | Medium | Core / State Machine | Failed-show hidden timestamp/state anomaly | `CONFIRMED` | Phase 1 |
+| **SUI-008** | Medium | Core / State Machine | Failed-show hidden timestamp/state anomaly | `FIXED — runtime hidden-lifecycle timing verified` | Phase 10 |
 | **SUI-009** | Low | Core / Validation | Player ID validation / phantom PlayerContext creation | `PARTIALLY ADDRESSED` | Phase 1 |
 | **SUI-010** | Medium | API / Docs | Public API synchronization risk | `CONFIRMED` | Phase 0.1 / 1 |
 | **SUI-011** | High | AMX / Loading | Non-standard AMX native registration behavior | `FIXED` | Phase 2 |
@@ -133,11 +133,20 @@
 - **ID:** SUI-008
 - **Severity:** Medium
 - **Area:** Core / State Machine
-- **Status:** CONFIRMED
-- **Current behavior:** If `cbCreate` succeeds but `cbShow` fails during `ShowGroup`, `group.isCreated` becomes `true` and `group.isVisible` remains `false`. However, `group.hiddenSinceTick` remains `0`.
-- **Risk:** On the very next tick, `ProcessTick` sees `currentTick - 0 > idleTimeoutMs` (evaluating to millions of ms), immediately auto-destroying the group.
-- **Evidence:** `src/Core.cpp:168-214`, `src/Core.cpp:46`.
-- **Planned phase:** Phase 1
+- **Status:** FIXED — runtime hidden-lifecycle timing verified
+- **Root Cause:** When an uncreated group succeeded in its `cbCreate` callback but subsequently failed its `cbShow` callback in `ShowGroup`, the group remained `isCreated == true && isVisible == false`, but `group.hiddenSinceTick` was left at its default registration value `0`. On the very next server tick, `ProcessTick` evaluated `(currentTick - 0) >= idleTimeoutMs`, which evaluated to millions of milliseconds, causing immediate premature auto-destruction of the newly created group regardless of the configured idle timeout.
+- **Fix Summary:**
+  - Captured `bool wasCreatedBeforeShow = group.isCreated;` prior to `cbCreate` in `ShowGroup`.
+  - On successful show (`cbShow` succeeds): `postGroup->isVisible = true`, `postGroup->hiddenSinceTick = 0` (inactivating the hidden interval timer), and `postGroup->lastUsedTick = now`.
+  - On failed show (`cbShow` fails):
+    - If the group was freshly created (`!wasCreatedBeforeShow && postGroup->isCreated && !postGroup->isVisible`), explicitly initialized `postGroup->hiddenSinceTick = now` and `postGroup->lastUsedTick = now`. This ensures the newly created-hidden group survives until its configured `idleTimeoutMs` elapses.
+    - If the group was already created and hidden prior to `ShowGroup` (`wasCreatedBeforeShow == true`), preserved the established `postGroup->hiddenSinceTick` untouched to maintain continuous hidden interval accounting without granting an unearned timeout extension.
+  - In `HideGroup`: on hide success, initialized `hiddenSinceTick = now; lastUsedTick = now;`. On hide failure, left group visible with `hiddenSinceTick = 0`.
+  - In `ProcessTick`: evaluates idle timeout exclusively against groups with `isCreated && !isVisible && hiddenSinceTick > 0` (or `idleTimeoutMs == 0`).
+  - Zero Pawn native signatures were changed; public API remained strictly backward-compatible.
+- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing `tests/show_failure_lifecycle/show_failure_lifecycle.pwn` across scenarios F1 through F10 (10/10 PASS). Re-verified zero regressions across all 8 existing permanent test suites (`reentrancy_regression`, `amx_ownership`, `native_validation`, `capacity_arithmetic`, `callback_semantics`, `player_teardown`, `group_identity`, `eviction_preflight`), achieving a cumulative 127 / 127 PASS (100%) permanent runtime test baseline.
+- **Evidence:** `src/Core.cpp:419-422, 579-612`, `tests/show_failure_lifecycle/`.
+- **Planned phase:** Phase 10
 
 ---
 

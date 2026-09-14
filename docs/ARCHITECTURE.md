@@ -274,5 +274,46 @@ When an eviction candidate was registered by an AMX script different from the sc
 - **Static Insufficiency Guarantee**: At the beginning of an eviction attempt, if the currently eligible candidate set cannot free enough capacity to satisfy the deficit against `min(evictionThreshold, maxTextDraws)`, `EnsureCapacity` returns `false` before invoking any eviction callback. Zero candidate groups are destroyed, zero callbacks are executed, `activeTextDrawCount` is unchanged, and existing group states are preserved intact (verified by E1 and E2).
 - **Callback-Mutation Limitation**: SUI does NOT provide full transactional rollback after arbitrary Pawn callback side effects have already occurred. If candidate A is evicted, and A's `cbDestroy` callback alters other groups (e.g. marking candidate B non-evictable) such that remaining capacity becomes insufficient, replanning aborts cleanly without destroying B, but candidate A cannot be resurrected. SUI guarantees zero destruction when insufficiency is knowable before eviction begins; it does not provide rollback once arbitrary external callbacks have executed.
 
+---
+
+## 8. Group Lifetime Timestamps & Tick-State Consistency (SUI-008)
+
+### 8.1. Timestamp Semantic Separation
+SUI maintains two explicit timestamps for every registered group:
+1. `hiddenSinceTick`: The monotonic millisecond tick at which the group entered its current uninterrupted hidden interval (`isCreated == true && isVisible == false`).
+   - When a group is visible (`isVisible == true`) or not created (`isCreated == false`), `hiddenSinceTick` is strictly inactive (`0`).
+   - Used exclusively by `SUICore::ProcessTick` to determine idle expiration: `(now - group.hiddenSinceTick) >= group.idleTimeoutMs`.
+2. `lastUsedTick`: The monotonic millisecond tick of most recent interaction or state change.
+   - Updated upon successful show, successful hide, touch (`SUI_TouchGroup`), or fresh group creation.
+   - Used by `SUICore::EnsureCapacity` as the age tie-breaker for LRU candidate eviction ordering.
+
+### 8.2. Show Failure Lifecycle Semantics
+Historically under SUI-008, when an uncreated group succeeded in its `cbCreate` callback but subsequently failed its `cbShow` callback, `hiddenSinceTick` was left at its default value `0`. Consequently, on the subsequent server tick, `ProcessTick` calculated `(currentTick - 0) >= idleTimeoutMs`, which evaluated to true for any non-zero server uptime, causing immediate, unintentional idle destruction.
+
+To ensure deterministic lifetime management, SUI establishes the following rules:
+- **Fresh-Create Show Failure**: When an uncreated group (`!wasCreatedBeforeShow`) is created by `ShowGroup` (`cbCreate` succeeds) but `cbShow` fails:
+  - The group remains created but hidden (`isCreated = true, isVisible = false`).
+  - SUI initializes `hiddenSinceTick = now` and `lastUsedTick = now`.
+  - The group survives its configured `idleTimeoutMs` interval and is only destroyed when that interval genuinely expires.
+- **Pre-Existing Hidden Show Failure**: If a group was already created and hidden (`wasCreatedBeforeShow == true`) before `ShowGroup` was invoked, and `cbShow` fails:
+  - SUI preserves the existing `hiddenSinceTick` untouched.
+  - This maintains continuous hidden interval accounting rather than granting an unearned lifetime reset.
+- **Show Success**:
+  - Sets `isVisible = true`.
+  - Sets `hiddenSinceTick = 0` (inactive, as visible groups cannot expire via idle timeout).
+  - Refreshes `lastUsedTick = now`.
+- **Hide Success**:
+  - Sets `isVisible = false`.
+  - Sets `hiddenSinceTick = now` (starts fresh hidden interval countdown).
+  - Sets `lastUsedTick = now`.
+- **Hide Failure**:
+  - Preserves `isVisible = true`.
+  - Leaves `hiddenSinceTick = 0` (group is still visible; idle countdown does not begin).
+- **Create Failure**:
+  - Group remains uncreated (`isCreated = false, isVisible = false`).
+  - Leaves `hiddenSinceTick = 0` and allocates zero capacity.
+- **Zero Idle Timeout (`idleTimeoutMs == 0`)**:
+  - A group configured with zero idle timeout is permitted to be destroyed on the very first tick after entering hidden state, representing intentional instantaneous idle collection.
+
 
 

@@ -1,6 +1,6 @@
 # SUI Runtime Test Execution Matrix
 
-This document defines the authoritative configuration, script dependencies, fixture requirements, and expected outcomes for all 7 permanent regression test suites in SUI.
+This document defines the authoritative configuration, script dependencies, fixture requirements, and expected outcomes for all 9 permanent regression test suites in SUI.
 
 ---
 
@@ -16,8 +16,9 @@ This document defines the authoritative configuration, script dependencies, fixt
 | **player_teardown** | `player_teardown` | `player_teardown_filterscript` | *(none)* | 18 | 18 / 18 PASS | Yes |
 | **group_identity** | `group_identity` | `group_identity_filterscript` | *(none)* | 25 | 25 / 25 PASS | Yes |
 | **eviction_preflight** | `eviction_preflight` | `eviction_preflight_filterscript` | *(none)* | 15 | 15 / 15 PASS | Yes |
+| **show_failure_lifecycle** | `show_failure_lifecycle` | *(none)* | *(none)* | 10 | 10 / 10 PASS | Yes |
 
-**Total Permanent Suite Pass Rate:** **117 / 117 PASS (100%)**
+**Total Permanent Suite Pass Rate:** **127 / 127 PASS (100%)**
 
 ---
 
@@ -96,6 +97,20 @@ This document defines the authoritative configuration, script dependencies, fixt
   5. Multi-AMX eviction ownership: Filterscript candidate destroy callbacks execute within the Filterscript's AMX context.
 - **Assertions:** E1–E15 (15 tests)
 - **Exit Behavior:** Server automatically terminates via RCON upon completing E15.
+
+### 9. show_failure_lifecycle
+- **Target Issue:** SUI-008 (Failed-show hidden timestamp semantics, idle lifetime correctness, and tick-state consistency)
+- **Gamemode:** `tests/show_failure_lifecycle/show_failure_lifecycle.pwn`
+- **Filterscripts:** None
+- **Key Invariants:**
+  1. Fresh-create show failure initializes `hiddenSinceTick` and `lastUsedTick` to current time so idle timeout operates correctly without premature tick destruction.
+  2. Continuous hidden lifetime preservation: Pre-existing created-hidden groups that fail a subsequent show preserve their established `hiddenSinceTick`.
+  3. Successful show resets `hiddenSinceTick = 0` (inactivating hidden timer) and refreshes `lastUsedTick`.
+  4. Successful hide records fresh `hiddenSinceTick` and `lastUsedTick`.
+  5. Failed hide leaves group visible and does not start hidden lifetime countdown.
+  6. Failed create leaves group uncreated without starting hidden interval.
+- **Assertions:** F1–F10 (10 tests)
+- **Exit Behavior:** Server automatically terminates via RCON upon completing F10.
 
 ---
 
