@@ -49,9 +49,10 @@ def resolve_compiler(explicit_path: str = None):
     if which_pawncc:
         return Path(which_pawncc)
 
-    # Common local Windows paths
+    # Common fallback candidate paths
     candidates = [
-        Path(r"C:\Users\alifc\Downloads\Project\Texture Studio\pawno\pawncc.exe"),
+        Path("tools/pawn/bin/pawncc"),
+        Path("pawno/pawncc.exe"),
         Path(r"C:\pawno\pawncc.exe"),
         Path(r"C:\samp\pawno\pawncc.exe"),
         Path("/usr/local/bin/pawncc"),
@@ -71,9 +72,11 @@ def resolve_includes(explicit_path: str = None):
     if env_path and Path(env_path).exists():
         return Path(env_path)
 
-    # Common local paths
+    # Common fallback candidate paths
     candidates = [
-        Path(r"C:\Users\alifc\Downloads\Project\Texture Studio\pawno\include"),
+        Path("tools/pawn-stdlib"),
+        Path("tools/samp-stdlib"),
+        Path("pawno/include"),
         Path(r"C:\pawno\include"),
         Path(r"C:\samp\pawno\include"),
         Path("/usr/local/include/samp"),
@@ -184,6 +187,8 @@ def main():
         cmd.extend([
             f"-i{pawn_inc}",
             "-d3",
+            "-p:",
+            "-w239",
             f"-o{amx_out}"
         ])
 

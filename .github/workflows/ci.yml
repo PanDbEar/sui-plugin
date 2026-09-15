@@ -10,15 +10,31 @@ jobs:
   ci-gates:
     name: SUI Regression & Verification Gates
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout Repository with Submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: recursive
 
+      - name: Verify SDK Submodule Pin
+        run: |
+          set -euo pipefail
+          SUBMODULE_STATUS=$(git submodule status lib/samp-plugin-sdk)
+          echo "Submodule status: $SUBMODULE_STATUS"
+          if ! echo "$SUBMODULE_STATUS" | grep -q "a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5"; then
+            echo "ERROR: Submodule lib/samp-plugin-sdk is not pinned to a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5"
+            exit 1
+          fi
+          echo "SDK submodule pin verified: a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5"
+
       - name: Set up Python 3
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: "3.11"
 
@@ -26,55 +42,80 @@ jobs:
       # LAYER A: Static Repository Contract Gates
       # -----------------------------------------------------------------
       - name: Layer A — Verify Public API Surface Contract (SUI-010)
-        run: python tests/api_contract/check_api_surface.py
+        run: |
+          set -euo pipefail
+          python tests/api_contract/check_api_surface.py
 
       - name: Layer A — Verify Source Surface & CMake Alignment (SUI-012)
-        run: python tests/repo_contract/check_source_surface.py
+        run: |
+          set -euo pipefail
+          python tests/repo_contract/check_source_surface.py
 
       # -----------------------------------------------------------------
       # LAYER B: Build & Compilation Contract Gates
       # -----------------------------------------------------------------
-      - name: Install 32-bit Multilib Toolchain
+      - name: Install 32-bit Multilib Toolchain & Runtime Packages
         run: |
+          set -euo pipefail
           sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y gcc-multilib g++-multilib libc6:i386 libstdc++6:i386 cmake file
+          sudo apt-get install -y gcc-multilib g++-multilib libc6:i386 libstdc++6:i386 cmake file binutils
 
       - name: Layer B — Configure & Build Release Plugin (ELF32 / -m32)
         run: |
+          set -euo pipefail
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --config Release --parallel $(nproc)
 
       - name: Layer B — Verify Binary Architecture (ELF32 / Intel 80386)
         run: |
+          set -euo pipefail
           file build/sui-plugin-legacy.so
-          readelf -h build/sui-plugin-legacy.so | grep -E 'Class|Machine|Type'
+          readelf -h build/sui-plugin-legacy.so
           # Assert ELF32
           readelf -h build/sui-plugin-legacy.so | grep -q "ELF32"
           # Assert Intel 80386
           readelf -h build/sui-plugin-legacy.so | grep -q "Intel 80386"
+          # Assert DYN (Shared object)
+          readelf -h build/sui-plugin-legacy.so | grep -q "DYN (Shared object file)"
 
       - name: Layer B — Verify Canonical C Plugin Exports
         run: |
-          nm -D --defined-only build/sui-plugin-legacy.so | grep -E '(^| )T (Supports|Load|Unload|AmxLoad|AmxUnload|ProcessTick)$'
-          export_count=$(nm -D --defined-only build/sui-plugin-legacy.so | grep -E -c '(^| )T (Supports|Load|Unload|AmxLoad|AmxUnload|ProcessTick)$')
-          if [ "$export_count" -ne 6 ]; then
-            echo "ERROR: Expected exactly 6 canonical exports, found $export_count"
-            exit 1
-          fi
+          set -euo pipefail
+          for sym in Supports Load Unload AmxLoad AmxUnload ProcessTick; do
+            if ! nm -D --defined-only build/sui-plugin-legacy.so | grep -q " T ${sym}$"; then
+              echo "ERROR: Missing required canonical plugin export: ${sym}"
+              exit 1
+            fi
+            echo "Verified export: ${sym}"
+          done
+          echo "All 6 canonical SA-MP plugin exports verified present."
 
-      - name: Setup Pawn Compiler & Standard Includes
+      - name: Setup Pinned Pawn Compiler & Standard Includes
         run: |
+          set -euo pipefail
           mkdir -p tools/pawn
-          # Download Pawn compiler (v3.10.10 Linux)
-          curl -L -s https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-linux.tar.gz | tar -xz -C tools/pawn --strip-components=1
+          PAWN_URL="https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-linux.tar.gz"
+          PAWN_SHA256="9bbb1df6e933318fce1fa61951e4196b70613c637a5a1d4c96937e147c18468d"
+          echo "Downloading Pawn compiler from $PAWN_URL..."
+          curl -sSL "$PAWN_URL" -o /tmp/pawnc.tar.gz
+          echo "Verifying Pawn compiler SHA-256..."
+          echo "$PAWN_SHA256  /tmp/pawnc.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/pawnc.tar.gz -C tools/pawn --strip-components=1
+          rm /tmp/pawnc.tar.gz
           chmod +x tools/pawn/bin/pawncc
-          # Clone standard Pawn and SA-MP includes
-          git clone --depth 1 https://github.com/pawn-lang/pawn-stdlib.git tools/pawn-stdlib
-          git clone --depth 1 https://github.com/pawn-lang/samp-stdlib.git tools/samp-stdlib
+
+          echo "Checking out pawn-stdlib at pinned commit e96507d9a6ddaae5bb0f3ec31479ba805aeff964..."
+          git clone https://github.com/pawn-lang/pawn-stdlib.git tools/pawn-stdlib
+          git -C tools/pawn-stdlib checkout e96507d9a6ddaae5bb0f3ec31479ba805aeff964
+
+          echo "Checking out samp-stdlib at pinned tag 0.3.7-R2-1-1 (commit 7b194986946f64e8c0a4d4223aafec704ffd6b88)..."
+          git clone https://github.com/pawn-lang/samp-stdlib.git tools/samp-stdlib
+          git -C tools/samp-stdlib checkout 7b194986946f64e8c0a4d4223aafec704ffd6b88
 
       - name: Layer B — Verify Pawn Fixture Compilation (18 / 18 Scripts)
         run: |
+          set -euo pipefail
           python scripts/compile_pawn.py \
             --compiler tools/pawn/bin/pawncc \
             --includes "tools/pawn-stdlib,tools/samp-stdlib" \
@@ -85,10 +126,12 @@ jobs:
       # -----------------------------------------------------------------
       - name: Setup Headless SA-MP Server Environment
         run: |
+          set -euo pipefail
           python scripts/setup_test_server.py --dest test-server
 
       - name: Compile Runtime Test Fixtures into Server Layout
         run: |
+          set -euo pipefail
           python scripts/compile_pawn.py \
             --compiler tools/pawn/bin/pawncc \
             --includes "tools/pawn-stdlib,tools/samp-stdlib" \
@@ -96,8 +139,16 @@ jobs:
 
       - name: Deploy SUI Plugin into Server Environment
         run: |
+          set -euo pipefail
           cp build/sui-plugin-legacy.so test-server/plugins/sui-plugin-legacy.so
 
       - name: Layer C — Execute 11 Permanent Regression Suites (151 Assertions)
         run: |
+          set -euo pipefail
           python scripts/run_regression.py --server-dir test-server
+
+      - name: Disposable Runtime Cleanup
+        if: always()
+        run: |
+          pkill -9 -f samp03svr || true
+          rm -rf test-server

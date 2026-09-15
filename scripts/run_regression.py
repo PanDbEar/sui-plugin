@@ -57,9 +57,10 @@ def find_server_dir(explicit_dir: str = None):
             return d
 
     candidates = [
-        Path("/home/pandbear/sui-test-server"),
         Path.cwd() / "test-server",
         Path.cwd() / "server",
+        Path("/opt/samp-server"),
+        Path("/srv/samp-server"),
     ]
     for c in candidates:
         if c.exists() and (c / "samp03svr").exists():

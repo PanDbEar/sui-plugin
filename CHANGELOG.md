@@ -7,14 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
-- **SUI-014**: Reproducible Test Automation, CI Gates, and Runtime Regression Infrastructure. Status: `FIXED — reproducible test automation and CI gates verified`.
-  - Converted manual verification procedures and scratch scripts into reproducible, repository-owned automation tooling without weakening platform constraints (-m32 / Linux x86 ELF32) or committing proprietary binaries.
+- **SUI-014**: Reproducible Test Automation, CI Gates, and Runtime Regression Infrastructure. Status: `PARTIALLY FIXED — Repository automation complete; hosted CI verification pending`.
+  - Converted manual verification procedures and scratch scripts into reproducible, repository-owned automation tooling without weakening platform constraints (-m32 / Linux x86 ELF32) or committing external binaries.
   - Implemented formal Three Evidence Layers architecture: Layer A (Static repository contract), Layer B (Build & compilation contract), Layer C (Live runtime regression).
-  - Created `scripts/compile_pawn.py`: repository-owned tool for compiling and verifying all 18 Pawn scripts (0 errors, 0 warnings), auto-detecting compiler and standard includes.
+  - Created `scripts/compile_pawn.py`: repository-owned tool for compiling and verifying all 18 Pawn scripts (0 errors, 0 warnings), auto-detecting compiler and standard includes without developer-local paths.
   - Created `scripts/run_regression.py`: repository-owned regression runner driving live execution across all 11 permanent test suites on headless SA-MP server (`samp03svr`) with exact 151 / 151 assertion tracking.
-  - Created `scripts/setup_test_server.py`: server provisioning tool to acquire and prepare SA-MP 0.3.7-R2 Linux server environment dynamically for CI and local workflows.
-  - Created `.github/workflows/ci.yml`: GitHub Actions CI pipeline executing all three evidence layers on Ubuntu Linux runners with 32-bit multilib toolchain.
-  - Created `docs/CI.md` documenting the three evidence layers, toolchain provenance, and local replication instructions.
+  - Created `scripts/setup_test_server.py`: server provisioning tool to acquire and prepare SA-MP 0.3.7-R2 Linux server environment dynamically with pre-extraction SHA-256 verification and path traversal protection.
+  - Pinned all dependencies to immutable commit SHAs and verified hashes: Pawn compiler v3.10.10 (SHA-256 `9bbb1df6...`), `pawn-stdlib` (commit `e96507d9...`), `samp-stdlib` (tag `0.3.7-R2-1-1` / commit `7b194986...`), and `samp-plugin-sdk` (submodule `a5ce36a9...`).
+  - Added 15-minute job timeout and fail-closed bash flags (`set -euo pipefail`) in `.github/workflows/ci.yml`.
+  - Corrected licensing and provenance documentation: `pawn-lang/compiler` license is `zlib/libpng`; SA-MP server binaries are acquired externally for runtime verification.
+  - Created `docs/CI.md` documenting the three evidence layers, dependency pin matrix, and local replication instructions.
 - **SUI-012**: Orphaned Component / Compat / open.mp Prototype Audit and Source-Surface Cleanup. Status: `FIXED — orphaned component architecture removed`.
   - Audited repository source surface and build graph synchronization against legacy SA-MP 0.3.7-R2 requirements.
   - Permanently removed uncompiled open.mp C++ Component SDK prototype files `src/Component.cpp` and `src/Component.hpp`.

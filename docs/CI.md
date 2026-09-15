@@ -38,16 +38,28 @@ The CI architecture strictly separates verification into **Three Distinct Eviden
 
 ---
 
-## 2. Toolchain Provenance & Redistribution Policy
+## 2. Toolchain Provenance & Dependency Integrity
 
-To maintain strict compliance with software licenses and repository hygiene, proprietary server binaries are **never committed to version control**. Instead, CI runners and developer workstations dynamically provision test environments using verified sources.
+To ensure 100% reproducible and verifiable verification across environments without committing external binaries to version control, all build-critical dependencies and test tooling are strictly version/commit pinned and integrity verified.
 
-| Dependency | Already Tracked? | Source / Upstream Provenance | License / Redistribution Policy | CI Provisioning Strategy | Local Workstation Strategy |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **`samp-plugin-sdk`** | **Yes** (`lib/samp-plugin-sdk`) | `maddinat0r/samp-plugin-sdk` pinned at commit `a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5` | Permissive (zlib) | Recursive checkout via `actions/checkout@v4` | Tracked git submodule |
-| **Pawn Compiler (`pawncc`)** | **No** | CompuPhase Pawn 3.2.3664 / `pawn-lang/compiler` v3.10.10 | Permissive (Apache-2.0 / zlib) | Downloaded dynamically during runner setup | Local Pawno or `PAWNCC` env var |
-| **SA-MP 0.3.7-R2 Linux Server (`samp03svr`)** | **No** | SA-MP Team archive (`samp037svr_R2-1.tar.gz`) | Proprietary Freeware (redistribution in git strictly prohibited) | Dynamically retrieved via `scripts/setup_test_server.py` | Local test server directory or setup script |
-| **SA-MP Standard Includes (`a_samp.inc`, etc.)** | **No** (only `pawn/sui.inc` is tracked) | Bundled with SA-MP server package and `pawn-lang/samp-stdlib` | SA-MP License / Apache-2.0 | Shallow clone of `pawn-lang/pawn-stdlib` and `pawn-lang/samp-stdlib` | Local include path (`pawno/include` or `SAMP_INCLUDE_PATH`) |
+SA-MP server binaries are not stored in this repository and are acquired externally for runtime verification.
+
+### Dependency Pin Matrix
+
+| Dependency | Source | Version / Commit | Integrity Pin | License |
+| :--- | :--- | :--- | :--- | :--- |
+| **`actions/checkout`** | GitHub Actions | `11bd71901bbe5b1630ceea73d27597364c9af683` (v4.2.2) | Commit SHA | MIT |
+| **`actions/setup-python`** | GitHub Actions | `42375524e23c412d93fb67b49958b491fce71c38` (v5.4.0) | Commit SHA | MIT |
+| **`samp-plugin-sdk`** | Tracked Git Submodule (`lib/samp-plugin-sdk`) | Commit `a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5` | Submodule Commit SHA | zlib/libpng |
+| **Pawn Compiler (`pawncc`)** | `pawn-lang/compiler` Linux release asset | Release `v3.10.10` | SHA-256 `9bbb1df6e933318fce1fa61951e4196b70613c637a5a1d4c96937e147c18468d` | zlib/libpng |
+| **`pawn-stdlib`** | `pawn-lang/pawn-stdlib` | Commit `e96507d9a6ddaae5bb0f3ec31479ba805aeff964` | Commit SHA | Apache-2.0 |
+| **`samp-stdlib`** | `pawn-lang/samp-stdlib` | Tag `0.3.7-R2-1-1` (Commit `7b194986946f64e8c0a4d4223aafec704ffd6b88`) | Tag & Commit SHA | Apache-2.0 |
+| **SA-MP Server Archive (`samp03svr`)** | Community preservation archive (overridable) | Version `0.3.7-R2-1` (`samp037svr_R2-1.tar.gz`) | SHA-256 `f8ead0b15683fc34f13a7a84ba9ea7252b17c5e3161d8255364e1abedd697a53` | SA-MP EULA (External) |
+
+### Provenance Details
+- **Pawn Compiler**: Pinned to `v3.10.10` release tarball from `pawn-lang/compiler`. The license distributed in that repository is `zlib/libpng` (per upstream `license.txt`). The compiler archive is verified against its SHA-256 checksum before extraction.
+- **Pawn Standard Libraries**: Both `pawn-stdlib` and `samp-stdlib` are pinned to immutable commit SHAs. `samp-stdlib` is locked to release tag `0.3.7-R2-1-1`, matching the SA-MP 0.3.7-R2 target.
+- **SA-MP Server Acquisition**: The headless server package is downloaded dynamically via `scripts/setup_test_server.py` from a community preservation mirror. Its SHA-256 hash is computed and compared against the pinned expected hash before extraction. If the hash does not match, setup aborts immediately. The source can be overridden using `--archive-url` or `SAMP_SERVER_ARCHIVE_URL` and `--archive-sha256` or `SAMP_SERVER_ARCHIVE_SHA256`. Safe extraction enforces path traversal checks on every member.
 
 ---
 
@@ -75,7 +87,7 @@ Layer B verifies that the plugin compiles cleanly under strict platform constrai
 - **C++ Shared Library**:
   - Compiled with `-m32` targeting Linux x86 (32-bit ELF, Intel 80386).
   - Validated via `file` and `readelf -h`.
-  - Dynamic export validation via `nm -D` ensuring exactly 6 canonical C entry points:
+  - Dynamic export validation via `nm -D` asserting that all six canonical SA-MP plugin entry points are present:
     - `Supports`
     - `Load`
     - `Unload`

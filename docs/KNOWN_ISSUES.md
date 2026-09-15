@@ -23,7 +23,7 @@
 | **SUI-011** | High | AMX / Loading | Non-standard AMX native registration behavior | `FIXED` | Phase 2 |
 | **SUI-012** | Low | Repo / Build | Orphaned open.mp component prototype and unused header | `FIXED — orphaned component architecture removed` | Phase 13 |
 | **SUI-013** | High | Repo / Git | Repository dependency / nested Git metadata handling | `RESOLVED` | Pre-Release |
-| **SUI-014** | Medium | QA / Tooling | Missing automated tests and CI | `FIXED — reproducible test automation and CI gates verified` | Phase 14 |
+| **SUI-014** | Medium | QA / Tooling | Missing automated tests and CI | `PARTIALLY FIXED — Repository automation complete; hosted CI verification pending` | Phase 14 / 14.1 |
 | **SUI-015** | Medium | Build / Packaging | Release packaging not yet defined | `CONFIRMED` | Pre-Release |
 | **SUI-016** | Medium | Core / Resource Lifecycle | Owner-unload external UI resource cleanup limitation | `CONFIRMED` | Phase 5 |
 | **SUI-017** | High | Core / Lifecycle / Identity | Re-entrant group replacement / generation identity confusion | `FIXED — runtime regression verified` | Phase 6 |
@@ -236,17 +236,18 @@
 - **ID:** SUI-014
 - **Severity:** Medium
 - **Area:** QA / Tooling
-- **Status:** FIXED — reproducible test automation and CI gates verified
+- **Status:** PARTIALLY FIXED — Repository automation complete; hosted CI verification pending
 - **Fix Summary:**
   - Designed and implemented formal Three Evidence Layers architecture: Layer A (Static contract checks), Layer B (Build & compilation contract), Layer C (Live runtime regression on headless SA-MP server).
   - Created repository-owned Pawn compiler tool `scripts/compile_pawn.py` supporting portable check-only verification and server deployment.
   - Created repository-owned runtime test runner `scripts/run_regression.py` orchestrating live execution of all 11 permanent test suites on `samp03svr` with 151 / 151 assertions.
-  - Created repository-owned server provisioning tool `scripts/setup_test_server.py` to acquire and prepare `samp03svr` without committing proprietary binaries to version control.
-  - Created GitHub Actions CI workflow `.github/workflows/ci.yml` executing all three evidence layers on Ubuntu Linux with `-m32`.
+  - Created repository-owned server provisioning tool `scripts/setup_test_server.py` to acquire and prepare `samp03svr` with SHA-256 integrity checks and path traversal protection without committing external binaries.
+  - Created GitHub Actions CI workflow `.github/workflows/ci.yml` executing all three evidence layers on Ubuntu Linux with `-m32`, pinned toolchains, and strict checksums.
+  - Pinned all dependencies: actions commit SHAs, `pawn-lang/compiler` v3.10.10 (SHA-256 `9bbb1df6...`), `pawn-stdlib` (commit `e96507d9...`), `samp-stdlib` (tag `0.3.7-R2-1-1` / commit `7b194986...`), and `samp-plugin-sdk` (submodule `a5ce36a9...`).
   - Documented CI architecture, toolchain provenance, and local replication guide in `docs/CI.md`.
-- **Verification:** Layer A verified (AP1–AP7 7/7 PASS, RC1–RC5 5/5 PASS). Layer B verified (ELF32, Intel 80386, 6 exports, 18/18 Pawn compilation). Layer C verified live on `samp03svr` with 151 / 151 PASS (100%).
+- **Verification:** Layer A verified locally (AP1–AP7 7/7 PASS, RC1–RC5 5/5 PASS). Layer B verified locally (ELF32, Intel 80386, 6 exports, 18/18 Pawn compilation with 0 errors/warnings). Layer C verified locally on `samp03svr` with 151 / 151 PASS across all 11 permanent suites (100%). Remote hosted execution is pending remote push to a configured upstream repository.
 - **Evidence:** `.github/workflows/ci.yml`, `scripts/compile_pawn.py`, `scripts/run_regression.py`, `scripts/setup_test_server.py`, `docs/CI.md`.
-- **Planned phase:** Phase 14
+- **Planned phase:** Phase 14 / 14.1
 
 ---
 

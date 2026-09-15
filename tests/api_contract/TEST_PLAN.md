@@ -47,7 +47,7 @@ python tests/api_contract/check_api_surface.py
 ```
 
 Compile all fixtures:
-```powershell
-& "C:\Users\alifc\Downloads\Project\Texture Studio\pawno\pawncc.exe" <file>.pwn -i<include_path> -ipawn
+```bash
+python scripts/compile_pawn.py --check-only
 ```
 Never commit `.amx` binaries to version control.
