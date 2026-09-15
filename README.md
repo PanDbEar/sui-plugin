@@ -16,7 +16,7 @@ SUI **does not hook or intercept native textdraw calls**. All rendering, allocat
 
 - **Primary Target:** Legacy SA-MP/open.mp-compatible plugin interface on **Linux x86 / 32-bit**.
 - **Windows / MSVC:** Not currently verified.
-- **Native open.mp Component (`IComponent`):** Experimental prototype in `src/Component.cpp`; not currently verified or included in active builds.
+- **Native open.mp Component (`IComponent`):** Not supported. SUI strictly targets the legacy SA-MP/open.mp 32-bit plugin interface. Experimental prototypes were audited and removed under SUI-012.
 - **64-bit:** Not supported. SA-MP and legacy open.mp plugin hosts run strictly as 32-bit processes.
 
 ---
@@ -222,9 +222,7 @@ sui-plugin/
     ├── main.cpp                  # Plugin entry points (Supports, Load, AmxLoad)
     ├── Core.hpp / Core.cpp       # Virtualizer state store & lifecycle engine
     ├── Natives.hpp / Natives.cpp # AMX native parameter dispatchers
-    ├── Utils.hpp                 # Tick & string parameter helpers
-    ├── Compat.hpp                # AMX backward compatibility utilities
-    └── Component.hpp / .cpp      # Experimental open.mp component prototype (unbuilt)
+    └── Utils.hpp                 # Tick & string parameter helpers
 ```
 
 ---
@@ -250,7 +248,7 @@ This project is currently at **Phase 0.1 Baseline**. A comprehensive technical a
 - [x] **Phase 0 / 0.1**: Truthful baseline, repository hygiene, synchronized API inventory, issue ledger, build documentation.
 - [ ] **Phase 1**: Critical runtime stability — resolve re-entrancy / iterator invalidation (SUI-001), AMX ownership (SUI-002), return code trap (SUI-006), and registration behavior (SUI-011).
 - [ ] **Phase 2**: Capacity engine & validation — non-destructive eviction (SUI-007), overflow safety (SUI-004), automated test harness (SUI-014).
-- [ ] **Phase 3**: Platform & ecosystem — release packaging (SUI-015), optional native open.mp component (SUI-012).
+- [ ] **Phase 3**: Platform & ecosystem — release packaging (SUI-015), automated CI (SUI-014).
 
 Review the active issue ledger in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
 

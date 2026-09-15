@@ -350,6 +350,20 @@ In legacy implementations, accessing unvalidated player IDs through map subscrip
 - **Valid Player ID without Context**: If `SUI_CleanupPlayer(playerId)` or `SUI_ResetPlayer(playerId)` is called with a valid player ID (`0 <= playerId < 1000`) for which no `PlayerContext` exists (e.g. player never registered any UI), the function returns `true` (`1` in Pawn). This preserves the idempotent cleanup contract established in SUI-005.
 - **Invalid Player ID**: If called with an invalid player ID (`playerId < 0 || playerId >= 1000`), the function returns `false` (`0` in Pawn), signaling explicit rejection at the native boundary.
 
+---
 
+## 10. Source-Surface Architecture & Build Graph Synchronization (SUI-012)
 
+SUI strictly targets the legacy SA-MP 0.3.7-R2 / open.mp plugin architecture (`AmxLoad`, `AmxUnload`, `ProcessTick`, `Supports`, `Load`, `Unload`) on Linux x86 (ELF32) with `-m32`.
 
+To guarantee 1:1 truthfulness between the repository source tree, active header includes, and `CMakeLists.txt`, all uncompiled prototypes and dead compatibility wrappers were audited and permanently removed:
+- `src/Component.cpp` and `src/Component.hpp`: Historical open.mp modern C++ Component SDK (`<sdk.hpp>`) prototypes. Because SUI does not bundle the open.mp component SDK and strictly operates as a legacy plugin, these uncompiled prototypes were deleted.
+- `src/Compat.hpp`: Unreferenced fallback wrappers (`Compat::GetString`, `Compat::RegisterNatives`). SUI natively performs parameter extraction in `src/Natives.cpp` and standard native registration via `amx_Register` in `src/main.cpp`.
+
+The authoritative source tree in `src/` consists of exactly 6 canonical translation units:
+1. `src/main.cpp`: SA-MP plugin entry points, exports, and native table registration.
+2. `src/Core.cpp`: Virtualizer core engine, lifecycle transitions, eviction, and teardown logic.
+3. `src/Core.hpp`: Virtualizer data model (`SUIGroup`, `PlayerContext`), mutex flags, and method declarations.
+4. `src/Natives.cpp`: AMX native dispatch handlers, argument bounds validation, and error translation.
+5. `src/Natives.hpp`: C++ native handler declarations.
+6. `src/Utils.hpp`: Parameter parsing, bounds validation, player ID domain checks, and monotonic timing utilities.

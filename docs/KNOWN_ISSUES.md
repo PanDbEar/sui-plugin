@@ -21,7 +21,7 @@
 | **SUI-009** | Low | Core / Validation | Player ID validation / phantom PlayerContext creation | `FIXED — runtime player ID validation verified` | Phase 11 |
 | **SUI-010** | Medium | API / Docs | Public API synchronization risk | `FIXED — public API synchronization verified` | Phase 12 |
 | **SUI-011** | High | AMX / Loading | Non-standard AMX native registration behavior | `FIXED` | Phase 2 |
-| **SUI-012** | Low | Repo / Build | Orphaned open.mp component prototype and unused header | `CONFIRMED` | Phase 3 |
+| **SUI-012** | Low | Repo / Build | Orphaned open.mp component prototype and unused header | `FIXED — orphaned component architecture removed` | Phase 13 |
 | **SUI-013** | High | Repo / Git | Repository dependency / nested Git metadata handling | `RESOLVED` | Pre-Release |
 | **SUI-014** | Medium | QA / Tooling | Missing automated tests and CI | `CONFIRMED` | Phase 2 |
 | **SUI-015** | Medium | Build / Packaging | Release packaging not yet defined | `CONFIRMED` | Pre-Release |
@@ -207,11 +207,16 @@
 - **ID:** SUI-012
 - **Severity:** Low
 - **Area:** Repo / Build
-- **Status:** CONFIRMED
-- **Current behavior:** `src/Component.hpp` and `src/Component.cpp` target modern open.mp `<sdk.hpp>` but are unreferenced by `CMakeLists.txt` and uncompilable without the open.mp SDK. `src/Compat.hpp` is unreferenced.
-- **Risk:** Dead code drift and confusion about active plugin architecture.
-- **Evidence:** `src/Component.hpp:3`, `src/Compat.hpp`, `CMakeLists.txt:15-21`.
-- **Planned phase:** Phase 3
+- **Status:** FIXED — orphaned component architecture removed
+- **Fix Summary:**
+  - Audited repository source tree against `CMakeLists.txt:set(SOURCES ...)`.
+  - Permanently deleted uncompiled, unreferenced open.mp component prototype files `src/Component.cpp` and `src/Component.hpp` (which depended on external `<sdk.hpp>` not present in the repository).
+  - Permanently deleted unreferenced compatibility wrapper `src/Compat.hpp`.
+  - Canonical `src/` directory contains exactly 6 translation units: `main.cpp`, `Core.cpp`, `Core.hpp`, `Natives.cpp`, `Natives.hpp`, `Utils.hpp`.
+  - Created automated static repository contract checker `tests/repo_contract/check_source_surface.py` verifying RC1 through RC5.
+- **Verification:** Verified via automated script `tests/repo_contract/check_source_surface.py` (5/5 PASS) and `tests/api_contract/check_api_surface.py` (7/7 PASS). Clean compilation of all 18 `.pwn` scripts (0 errors, 0 warnings). Live runtime regression of all 11 permanent suites on 32-bit Linux SA-MP dedicated server (`samp03svr`) with 151 / 151 PASS (100%).
+- **Evidence:** `tests/repo_contract/check_source_surface.py`, `tests/repo_contract/TEST_PLAN.md`, `CMakeLists.txt:15-21`.
+- **Planned phase:** Phase 13
 
 ---
 

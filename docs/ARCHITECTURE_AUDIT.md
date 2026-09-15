@@ -268,18 +268,18 @@ If a player requested capacity exceeding `min(evictionThreshold, maxTextDraws)` 
 
 ---
 
-### 3.8. CODEBASE HYGIENE: Orphaned & Dead Code
+### 3.8. CODEBASE HYGIENE: Orphaned & Dead Code (SUI-012 — Resolved)
 
 #### `src/Component.hpp` and `src/Component.cpp`
-- Implements an unfinished open.mp native component (`IComponent`, `CoreEventHandler`, `PROVIDE_UID`).
-- Includes `<sdk.hpp>` from the modern open.mp C++ Component SDK, which is **not included in `lib/`**.
-- It is excluded from `CMakeLists.txt` and will fail compilation if added.
-- **Decision for Phase 0:** Document as experimental / non-active target; keep untouched.
+- Implemented an unfinished open.mp native component (`IComponent`, `CoreEventHandler`, `PROVIDE_UID`).
+- Included `<sdk.hpp>` from the modern open.mp C++ Component SDK, which is **not included in `lib/`**.
+- It was excluded from `CMakeLists.txt` and uncompilable under the repository toolchain.
+- **Phase 13 Remediation (Resolved):** Permanently removed from the codebase under SUI-012. SUI strictly targets the legacy SA-MP/open.mp 32-bit plugin interface.
 
 #### `src/Compat.hpp`
-- Defines `Compat::GetString` and `Compat::RegisterNatives`.
-- Never included anywhere in `src/`.
-- **Decision for Phase 0:** Preserve for Phase 1 AMX refactoring.
+- Defined `Compat::GetString` and `Compat::RegisterNatives`.
+- Never included anywhere in active `src/` translation units.
+- **Phase 13 Remediation (Resolved):** Permanently removed from the codebase under SUI-012. Standard SDK functions and internal utilities in `src/Utils.hpp` are used directly.
 
 ---
 
@@ -374,7 +374,7 @@ Phase 6 / 6.1 introduced generation tracking but permitted in-place replacement 
 | **3.5** | Eager & destructive capacity eviction failure (SUI-007) | **MEDIUM** | Phase 9 (Resolved) |
 | **3.6** | Immediate auto-destroy on failed show (`hiddenSinceTick == 0`) (SUI-008) | **MEDIUM** | Phase 10 (Resolved) |
 | **3.7** | Unchecked player ID & phantom context allocation (SUI-009) | **LOW** | Phase 11 (Resolved) |
-| **3.8** | Orphaned open.mp component code (`Component.cpp`) | **LOW** | Future |
+| **3.8** | Orphaned open.mp component code (`Component.cpp`) (SUI-012) | **LOW** | Phase 13 (Resolved) |
 | **3.9** | Unsafe Pawn parameter validation and signed/unsigned conversion (SUI-003) | **HIGH** | Phase 4 (Resolved) |
 | **3.10** | Capacity arithmetic overflow and accounting invariant safety (SUI-004) | **MEDIUM** | Phase 5 (Resolved) |
 | **3.11** | Re-entrant group replacement / generation identity confusion (SUI-017) | **HIGH** | Phase 6 (Resolved) |
@@ -399,5 +399,6 @@ Phase 6 / 6.1 introduced generation tracking but permitted in-place replacement 
 11. **Phase 10 (SUI-008)**: Corrected failed-show hidden lifetime timestamps, continuous hidden interval preservation, and tick-state consistency.
 12. **Phase 11 (SUI-009)**: Enforced player ID domain validation ($0 \le \text{playerId} < 1000$), eliminated phantom PlayerContext creation, and hardened native trust boundary.
 13. **Phase 12 (SUI-010)**: Synchronized public Pawn API declarations, registered C++ natives, documented contracts, stock helpers, and example compatibility.
+14. **Phase 13 (SUI-012)**: Orphaned component / compat / open.mp prototype audit and source-surface cleanup; enforced 1:1 CMake build graph truthfulness.
 
 

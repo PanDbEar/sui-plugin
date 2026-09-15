@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **SUI-012**: Orphaned Component / Compat / open.mp Prototype Audit and Source-Surface Cleanup. Status: `FIXED — orphaned component architecture removed`.
+  - Audited repository source surface and build graph synchronization against legacy SA-MP 0.3.7-R2 requirements.
+  - Permanently removed uncompiled open.mp C++ Component SDK prototype files `src/Component.cpp` and `src/Component.hpp`.
+  - Permanently removed unreferenced AMX compatibility header `src/Compat.hpp`.
+  - Enforced 1:1 truthfulness between `src/` files and `CMakeLists.txt:SOURCES` (exactly 6 canonical units in `src/`: `main.cpp`, `Core.cpp`, `Core.hpp`, `Natives.cpp`, `Natives.hpp`, `Utils.hpp`).
+  - Created automated static repository surface checker `tests/repo_contract/check_source_surface.py` verifying checks RC1 through RC5.
+  - Created test plan `tests/repo_contract/TEST_PLAN.md` documenting static repository invariants.
+  - Verified clean compilation of all 18 Pawn scripts (0 errors, 0 warnings), 7/7 static API contract checks, 5/5 static repo contract checks, and 151 / 151 live runtime assertions across all 11 permanent test suites on 32-bit Linux SA-MP dedicated server (`samp03svr`).
 - **SUI-010**: Public Pawn API Synchronization, Return Contract Truthfulness, Include/Documentation Alignment, and Example Compatibility. Status: `FIXED — public API synchronization verified`.
   - Audited and synchronized the complete public Pawn API surface across `src/main.cpp` (AMX registration), `src/Natives.hpp` / `src/Natives.cpp` (declarations, definitions, parameter checking), `pawn/sui.inc` (declarations, stocks, tags), `docs/API_REFERENCE.md`, `docs/API_INVENTORY.md`, and `README.md`.
   - Verified exact 1-to-1 correspondence across all 19 public C++ natives (18 player-specific + 1 global) and 1 stock helper (`SUI_RegisterGroup`).

@@ -16,11 +16,11 @@ Linux x86 / 32-bit
 | :--- | :--- | :--- | :--- | :--- |
 | `sui-plugin-legacy` (Linux / WSL) | Legacy Plugin (`AmxLoad`/`Supports`) | x86 (32-bit) | `sui-plugin-legacy.so` | **Verified (WSL Ubuntu 24.04)** |
 | `sui-plugin-legacy` (Windows Native) | Legacy Plugin | x86 (32-bit) | `sui-plugin-legacy.dll` | **Not currently verified.** |
-| `sui-component` (open.mp) | Native open.mp Component (`IComponent`) | x86 / x64 | N/A | **Not currently verified.** |
+| `sui-component` (open.mp) | Native open.mp Component (`IComponent`) | x86 / x64 | N/A | **Not supported (removed under SUI-012)** |
 
 > [!IMPORTANT]
 > **Do not confuse legacy plugin compatibility with native open.mp component support.**
-> SUI is currently configured as a legacy 32-bit SA-MP/open.mp plugin. Modern open.mp native component support (`IComponent`) is an unfinished prototype (`src/Component.cpp`) and is not currently part of the active build.
+> SUI is strictly configured as a legacy 32-bit SA-MP/open.mp plugin. Modern open.mp native component prototypes (`IComponent`) were audited and removed under SUI-012 to ensure 100% truthfulness with the build system.
 
 > [!NOTE]
 > 64-bit builds are **not supported**. SA-MP server and open.mp legacy plugin hosts run strictly as 32-bit (x86) processes.
@@ -100,7 +100,6 @@ file build/sui-plugin-legacy.so
 
 ---
 
-## 5. Known Source Exclusions
-
-- `src/Component.cpp` and `src/Component.hpp` are excluded from `CMakeLists.txt`. They contain an experimental prototype for the modern open.mp C++ Component SDK, which is not bundled in `lib/`.
-- `src/Compat.hpp` is not currently referenced by any active translation unit.
+## 5. Source Tree Synchronization & Exclusions
+ 
+Under SUI-012, all orphaned prototypes and unreferenced compatibility headers (`src/Component.cpp`, `src/Component.hpp`, and `src/Compat.hpp`) were audited and permanently removed from the repository. All `.cpp` files in `src/` are 100% synchronized with `CMakeLists.txt:SOURCES`.
