@@ -174,3 +174,29 @@ The GitHub Actions workflow is defined in [`.github/workflows/ci.yml`](../.githu
 1. **Layer A**: Runs static contract checkers against Python 3.11.
 2. **Layer B**: Installs `gcc-multilib`, builds 32-bit Release plugin, asserts ELF32 architecture and 6 exports, downloads Pawn compiler, and verifies 18 / 18 Pawn compilation.
 3. **Layer C**: Automatically provisions SA-MP server via `setup_test_server.py`, deploys compiled test fixtures and `sui-plugin-legacy.so`, and executes all 11 suites via `run_regression.py`, asserting 151 / 151 passing assertions.
+
+---
+
+## 6. Verified Hosted CI Evidence
+
+The CI pipeline is authoritatively verified on GitHub-hosted infrastructure:
+
+- **Repository:** `PanDbEar/sui-plugin`
+- **Workflow:** `SUI Continuous Integration` (`.github/workflows/ci.yml`)
+- **Run ID:** `34941878535`
+- **Job ID:** `104292210079`
+- **Verified Commit SHA:** `8ec9ed158f96e499d363b9f87452d9a9be87a0c5`
+- **Runner Environment:** `ubuntu-24.04` (GitHub Actions hosted runner)
+- **Workflow Conclusion:** `success`
+- **SDK Submodule Pin:** Verified `a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5`
+- **Layer A (Static Contracts):**
+  - API Surface Contract: 7 / 7 PASS
+  - Source Surface Contract: 5 / 5 PASS
+- **Layer B (Build & Compilation):**
+  - Architecture: ELF32, Intel 80386, DYN shared object file
+  - Canonical Exports: 6 / 6 present (`Supports`, `Load`, `Unload`, `AmxLoad`, `AmxUnload`, `ProcessTick`)
+  - Pawn Compilation: 18 / 18 PASS (0 errors, 0 emitted warnings under `-w239`)
+- **Layer C (Live Runtime Regression):**
+  - All 11 permanent suites executed on headless SA-MP 0.3.7-R2 server
+  - Assertion Total: 151 / 151 PASS (100% assertion coverage, zero regressions)
+- **Cleanup:** `pkill -9 -f samp03svr` and `rm -rf test-server` executed cleanly in `if: always()` step.
