@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **SUI-015**: Deterministic Release Packaging, Distribution Layout, Integrity Manifest, and Release-Gate Automation. Status: `FIXED — Deterministic release packaging and distribution contract verified`.
+  - Project owner explicitly authorized standard MIT License (`Copyright (c) 2026 PanDbEar`).
+  - Added canonical root `LICENSE` file and updated `README.md` licensing declaration.
+  - Implemented repository-owned release packager `scripts/package_release.py` enforcing strict ELF32 / Intel 80386 / DYN architecture checks and presence of all 6 canonical exports (`Supports`, `Load`, `Unload`, `AmxLoad`, `AmxUnload`, `ProcessTick`).
+  - Defined canonical distribution archive layout (`sui-plugin-<VERSION>/`) bundling 10 allowlisted items: binary `.so`, public include `sui.inc`, factory login example, API reference, build guide, README, CHANGELOG, LICENSE, build traceability `BUILD_INFO.txt`, and internal `SHA256SUMS`.
+  - Achieved byte-for-byte reproducibility across independent runs using fixed `SOURCE_DATE_EPOCH`, deterministic tar member permissions, and fixed gzip container header timestamps (`gzip.GzipFile(mtime=epoch, filename="")`).
+  - Implemented automated release contract checker `tests/release_contract/check_release_package.py` and test plan `tests/release_contract/TEST_PLAN.md` validating checks PK1 through PK12 (12 / 12 PASS).
+  - Implemented standalone package-only deployment smoke test `tests/release_contract/package_smoke.pwn` and runner `tests/release_contract/run_package_smoke.py`, rigorously proving Pawn include isolation (compiling exclusively against extracted `pawno/include/sui.inc`) and binary deployment isolation (running exclusively extracted `plugins/sui-plugin-legacy.so`).
+  - Integrated Layer D release packaging dry-run gates and test package artifact upload into `.github/workflows/ci.yml`.
+  - Created distribution guide `docs/RELEASE.md`.
 - **SUI-014**: Reproducible Test Automation, CI Gates, and Runtime Regression Infrastructure. Status: `FIXED — Reproducible repository automation and GitHub-hosted CI verified`.
   - Converted manual verification procedures and scratch scripts into reproducible, repository-owned automation tooling without weakening platform constraints (-m32 / Linux x86 ELF32) or committing external binaries.
   - Implemented formal Three Evidence Layers architecture: Layer A (Static repository contract), Layer B (Build & compilation contract), Layer C (Live runtime regression).

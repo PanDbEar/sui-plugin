@@ -185,7 +185,7 @@ The CI pipeline is authoritatively verified on GitHub-hosted infrastructure:
 - **Workflow:** `SUI Continuous Integration` (`.github/workflows/ci.yml`)
 - **Run ID:** `34941878535`
 - **Job ID:** `104292210079`
-- **Verified Commit SHA:** `8ec9ed158f96e499d363b9f87452d9a9be87a0c5`
+- **Verified Commit SHA:** `8ec9ed10e5f0819f1e8f8346f4a00392ca0392d6`
 - **Runner Environment:** `ubuntu-24.04` (GitHub Actions hosted runner)
 - **Workflow Conclusion:** `success`
 - **SDK Submodule Pin:** Verified `a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5`

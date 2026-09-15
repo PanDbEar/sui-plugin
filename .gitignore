@@ -1,6 +1,9 @@
 # Build outputs & CMake cache
 build/
 build*/
+dist/
+tools/
+test-server/
 bin/
 out/
 CMakeFiles/

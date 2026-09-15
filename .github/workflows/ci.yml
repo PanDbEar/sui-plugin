@@ -147,8 +147,45 @@ jobs:
           set -euo pipefail
           python scripts/run_regression.py --server-dir test-server
 
+      # -----------------------------------------------------------------
+      # LAYER D: Release Packaging & Distribution Contract Gates
+      # -----------------------------------------------------------------
+      - name: Layer D — Package Deterministic Release Distribution (0.0.0-test)
+        run: |
+          set -euo pipefail
+          SOURCE_DATE_EPOCH=1700000000 python scripts/package_release.py \
+            --binary build/sui-plugin-legacy.so \
+            --version 0.0.0-test \
+            --output-dir dist
+
+      - name: Layer D — Verify Release Contract (PK1–PK12)
+        run: |
+          set -euo pipefail
+          python tests/release_contract/check_release_package.py \
+            --dist dist \
+            --version 0.0.0-test
+
+      - name: Layer D — Execute Package Deployment Smoke Test (Isolated Boundary)
+        run: |
+          set -euo pipefail
+          python tests/release_contract/run_package_smoke.py \
+            --archive dist/sui-plugin-0.0.0-test-linux-x86.tar.gz \
+            --compiler tools/pawn/bin/pawncc \
+            --stdlibs "tools/pawn-stdlib,tools/samp-stdlib" \
+            --server-dir test-server-smoke
+
+      - name: Layer D — Upload CI Test Package Artifact
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb99ba811e # v4.6.1
+        with:
+          name: sui-package-dry-run-0.0.0-test
+          path: |
+            dist/sui-plugin-0.0.0-test-linux-x86.tar.gz
+            dist/sui-plugin-0.0.0-test-linux-x86.zip
+            dist/sui-plugin-0.0.0-test-SHA256SUMS.txt
+          if-no-files-found: error
+
       - name: Disposable Runtime Cleanup
         if: always()
         run: |
           pkill -9 -f samp03svr || true
-          rm -rf test-server
+          rm -rf test-server test-server-smoke

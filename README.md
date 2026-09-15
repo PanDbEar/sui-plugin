@@ -238,7 +238,27 @@ cmake .. -DCMAKE_BUILD_TYPE=Release
 cmake --build . --config Release -j4
 ```
 
-Copy `build/sui-plugin-legacy.so` to your server's `plugins/` directory and include `pawn/sui.inc` in your gamemode.
+### Package Installation (Prebuilt Release)
+
+For SA-MP 0.3.7-R2 Linux x86 servers:
+
+1. Download and extract the official release archive (`sui-plugin-<VERSION>-linux-x86.tar.gz` or `.zip`).
+2. Copy `plugins/sui-plugin-legacy.so` to your server's `plugins/` directory:
+   ```bash
+   cp plugins/sui-plugin-legacy.so /path/to/server/plugins/
+   ```
+3. Add `sui-plugin-legacy.so` to your `server.cfg` plugins directive:
+   ```text
+   plugins sui-plugin-legacy.so
+   ```
+4. Copy `pawno/include/sui.inc` into your Pawn compiler include directory:
+   ```bash
+   cp pawno/include/sui.inc /path/to/pawno/include/
+   ```
+5. Include SUI in your gamemode or filterscript:
+   ```pawn
+   #include <sui>
+   ```
 
 ---
 
@@ -249,7 +269,7 @@ This project is currently verified across **11 permanent runtime test suites (15
 - [x] **Phase 0 / 0.1**: Truthful baseline, repository hygiene, synchronized API inventory, issue ledger, build documentation.
 - [x] **Phase 1**: Critical runtime stability — resolve re-entrancy / iterator invalidation (SUI-001), AMX ownership (SUI-002), return code trap (SUI-006), and registration behavior (SUI-011).
 - [x] **Phase 2**: Capacity engine & validation — non-destructive eviction (SUI-007), overflow safety (SUI-004), automated test harness and CI (SUI-014).
-- [ ] **Phase 3**: Platform & ecosystem — release packaging (SUI-015).
+- [x] **Phase 3**: Platform & ecosystem — release packaging (SUI-015).
 
 Review the test and CI architecture in [docs/CI.md](docs/CI.md) and active issue ledger in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
 
@@ -257,4 +277,6 @@ Review the test and CI architecture in [docs/CI.md](docs/CI.md) and active issue
 
 ## License
 
-License: To be determined before the first public release.
+This project is licensed under the [MIT License](LICENSE).
+
+Copyright (c) 2026 PanDbEar. Third-party licensing and attribution information is documented separately where applicable.
