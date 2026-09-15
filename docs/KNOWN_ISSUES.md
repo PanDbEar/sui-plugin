@@ -245,7 +245,7 @@
   - Created GitHub Actions CI workflow `.github/workflows/ci.yml` executing all three evidence layers on Ubuntu Linux with `-m32`, pinned toolchains, and strict checksums.
   - Pinned all dependencies: actions commit SHAs, `pawn-lang/compiler` v3.10.10 (SHA-256 `9bbb1df6...`), `pawn-stdlib` (commit `e96507d9...`), `samp-stdlib` (tag `0.3.7-R2-1-1` / commit `7b194986...`), and `samp-plugin-sdk` (submodule `a5ce36a9...`).
   - Documented CI architecture, toolchain provenance, and local replication guide in `docs/CI.md`.
-- **Verification:** Layer A verified locally (AP1–AP7 7/7 PASS, RC1–RC5 5/5 PASS). Layer B verified locally (ELF32, Intel 80386, 6 exports, 18/18 Pawn compilation with 0 errors/warnings). Layer C verified locally on `samp03svr` with 151 / 151 PASS across all 11 permanent suites (100%). Remote hosted execution is pending remote push to a configured upstream repository.
+- **Verification:** Layer A verified in clean-checkout simulation (AP1–AP7 7/7 PASS, RC1–RC5 5/5 PASS). Layer B verified in clean-checkout simulation (ELF32, Intel 80386, 6 exports, 18/18 Pawn compilation with 0 errors and 0 emitted warnings under pinned CI warning policy `-w239`). Layer C verified in clean-checkout simulation on `samp03svr` with 151 / 151 PASS across all 11 permanent suites (100%). Remote hosted execution is pending remote push to a configured upstream repository.
 - **Evidence:** `.github/workflows/ci.yml`, `scripts/compile_pawn.py`, `scripts/run_regression.py`, `scripts/setup_test_server.py`, `docs/CI.md`.
 - **Planned phase:** Phase 14 / 14.1
 
