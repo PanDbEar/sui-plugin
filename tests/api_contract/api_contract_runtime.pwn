@@ -2,7 +2,7 @@
 #include "../../pawn/sui.inc"
 
 // ============================================================================
-// SUI PHASE 12.2: API CONTRACT & STOCK HELPER RUNTIME SUITE (AS1–AS9)
+// SUI PHASE 12.3: API CONTRACT & STOCK HELPER RUNTIME SUITE (AS1–AS10)
 // ============================================================================
 
 new g_test_as1_pass = 0;
@@ -14,6 +14,7 @@ new g_test_as6_pass = 0;
 new g_test_as7_pass = 0;
 new g_test_as8_pass = 0;
 new g_test_as9_pass = 0;
+new g_test_as10_pass = 0;
 
 main()
 {
@@ -32,6 +33,27 @@ public OnAS9_Destroy(playerid)
     g_as9_destroy_called++;
     return 1;
 }
+
+// AS10 Callback counters and implementations
+new g_as10_old_create = 0;
+new g_as10_old_destroy = 0;
+new g_as10_old_show = 0;
+new g_as10_old_hide = 0;
+
+new g_as10_new_create = 0;
+new g_as10_new_destroy = 0;
+new g_as10_new_show = 0;
+new g_as10_new_hide = 0;
+
+forward OnAS10_OldCreate(playerid); public OnAS10_OldCreate(playerid) { g_as10_old_create++; return 1; }
+forward OnAS10_OldDestroy(playerid); public OnAS10_OldDestroy(playerid) { g_as10_old_destroy++; return 1; }
+forward OnAS10_OldShow(playerid); public OnAS10_OldShow(playerid) { g_as10_old_show++; return 1; }
+forward OnAS10_OldHide(playerid); public OnAS10_OldHide(playerid) { g_as10_old_hide++; return 1; }
+
+forward OnAS10_NewCreate(playerid); public OnAS10_NewCreate(playerid) { g_as10_new_create++; return 1; }
+forward OnAS10_NewDestroy(playerid); public OnAS10_NewDestroy(playerid) { g_as10_new_destroy++; return 1; }
+forward OnAS10_NewShow(playerid); public OnAS10_NewShow(playerid) { g_as10_new_show++; return 1; }
+forward OnAS10_NewHide(playerid); public OnAS10_NewHide(playerid) { g_as10_new_hide++; return 1; }
 
 // ----------------------------------------------------------------------------
 // AS1: Valid SUI_RegisterGroup Setup
@@ -434,14 +456,118 @@ Test_AS9_ExistingGroupSafety()
     print("[TEST-AS9] PASS: Re-registering created group fails safely without destroying live UI.");
 }
 
+// ----------------------------------------------------------------------------
+// AS10: Failed Re-registration Callback Isolation
+// ----------------------------------------------------------------------------
+Test_AS10_CallbackIsolation()
+{
+    SUI_CleanupPlayer(0);
+    g_as10_old_create = 0;
+    g_as10_old_destroy = 0;
+    g_as10_old_show = 0;
+    g_as10_old_hide = 0;
+    g_as10_new_create = 0;
+    g_as10_new_destroy = 0;
+    g_as10_new_show = 0;
+    g_as10_new_hide = 0;
+
+    print("[TEST-AS10] Step 1: Register as10_grp with OLD callback names...");
+    new r1 = SUI_RegisterGroup(0, "as10_grp", "OnAS10_OldCreate", "OnAS10_OldDestroy", "OnAS10_OldShow", "OnAS10_OldHide", 4, 30000, SUI_PRIORITY_NORMAL, true);
+    if (r1 != 1)
+    {
+        printf("[TEST-AS10] FAIL: Initial registration returned %d", r1);
+        return;
+    }
+
+    print("[TEST-AS10] Step 2: Show group successfully...");
+    if (!SUI_ShowGroup(0, "as10_grp"))
+    {
+        print("[TEST-AS10] FAIL: Initial ShowGroup failed");
+        return;
+    }
+
+    if (!SUI_IsGroupCreated(0, "as10_grp") || !SUI_IsGroupVisible(0, "as10_grp"))
+    {
+        print("[TEST-AS10] FAIL: Group is not created or not visible");
+        return;
+    }
+
+    if (SUI_GetActiveTextDrawCount(0) != 4)
+    {
+        printf("[TEST-AS10] FAIL: Active count is %d (4 expected)", SUI_GetActiveTextDrawCount(0));
+        return;
+    }
+
+    if (g_as10_old_create != 1 || g_as10_old_show != 1)
+    {
+        printf("[TEST-AS10] FAIL: Initial callback counts mismatch: oldCreate=%d, oldShow=%d", g_as10_old_create, g_as10_old_show);
+        return;
+    }
+
+    print("[TEST-AS10] Step 3: Attempting re-registration with NEW callbacks on already created group...");
+    new r2 = SUI_RegisterGroup(0, "as10_grp", "OnAS10_NewCreate", "OnAS10_NewDestroy", "OnAS10_NewShow", "OnAS10_NewHide", 8, 30000, SUI_PRIORITY_NORMAL, true);
+    if (r2 != 0)
+    {
+        printf("[TEST-AS10] FAIL: Re-registration of created group returned %d (0 expected)", r2);
+        return;
+    }
+
+    print("[TEST-AS10] Step 4: Execute HideGroup on live group...");
+    if (!SUI_HideGroup(0, "as10_grp"))
+    {
+        print("[TEST-AS10] FAIL: HideGroup failed");
+        return;
+    }
+
+    print("[TEST-AS10] Step 5: Execute ShowGroup on live group...");
+    if (!SUI_ShowGroup(0, "as10_grp"))
+    {
+        print("[TEST-AS10] FAIL: ShowGroup failed");
+        return;
+    }
+
+    print("[TEST-AS10] Step 6: Execute DestroyGroup on live group...");
+    if (!SUI_DestroyGroup(0, "as10_grp"))
+    {
+        print("[TEST-AS10] FAIL: DestroyGroup failed");
+        return;
+    }
+
+    print("[TEST-AS10] Step 7: Verifying callback invocations: OLD must execute, NEW must be 0...");
+    if (g_as10_new_create != 0 || g_as10_new_destroy != 0 || g_as10_new_show != 0 || g_as10_new_hide != 0)
+    {
+        printf("[TEST-AS10] FAIL: NEW callbacks leaked! newCreate=%d, newDestroy=%d, newShow=%d, newHide=%d",
+            g_as10_new_create, g_as10_new_destroy, g_as10_new_show, g_as10_new_hide);
+        return;
+    }
+
+    // oldHide is 2: Step 4 manual hide + Step 6 destroy auto-hides visible group
+    if (g_as10_old_hide != 2 || g_as10_old_show != 2 || g_as10_old_destroy != 1)
+    {
+        printf("[TEST-AS10] FAIL: OLD callbacks mismatch: oldHide=%d (2 exp), oldShow=%d (2 exp), oldDestroy=%d (1 exp)",
+            g_as10_old_hide, g_as10_old_show, g_as10_old_destroy);
+        return;
+    }
+
+    if (SUI_GetActiveTextDrawCount(0) != 0)
+    {
+        printf("[TEST-AS10] FAIL: Active count is %d after destroy (0 expected)", SUI_GetActiveTextDrawCount(0));
+        return;
+    }
+
+    SUI_CleanupPlayer(0);
+    g_test_as10_pass = 1;
+    print("[TEST-AS10] PASS: Failed re-registration does not mutate live callback contract (OLD authoritative, NEW=0).");
+}
+
 PrintSummaryAndExit()
 {
     new totalPass = g_test_as1_pass + g_test_as2_pass + g_test_as3_pass + g_test_as4_pass +
                     g_test_as5_pass + g_test_as6_pass + g_test_as7_pass + g_test_as8_pass +
-                    g_test_as9_pass;
+                    g_test_as9_pass + g_test_as10_pass;
 
     print("\n================================================================");
-    print("    SUI PHASE 12.2: STOCK HELPER RUNTIME TEST RESULTS (AS1-AS9)   ");
+    print("    SUI PHASE 12.3: STOCK HELPER RUNTIME TEST RESULTS (AS1-AS10)  ");
     print("================================================================");
     printf("AS1 (Valid SUI_RegisterGroup Setup):              %s", g_test_as1_pass ? ("PASS") : ("FAIL"));
     printf("AS2 (Invalid Priority Rejection):                 %s", g_test_as2_pass ? ("PASS") : ("FAIL"));
@@ -452,9 +578,10 @@ PrintSummaryAndExit()
     printf("AS7 (Usable Configuration Lifecycle):             %s", g_test_as7_pass ? ("PASS") : ("FAIL"));
     printf("AS8 (Prevalidation Failure Cleanliness):          %s", g_test_as8_pass ? ("PASS") : ("FAIL"));
     printf("AS9 (Existing Created Group Re-reg Safety):       %s", g_test_as9_pass ? ("PASS") : ("FAIL"));
+    printf("AS10 (Failed Re-reg Callback Isolation):          %s", g_test_as10_pass ? ("PASS") : ("FAIL"));
     print("================================================================");
-    printf("TOTAL: %d / 9 PASSED", totalPass);
-    if (totalPass == 9)
+    printf("TOTAL: %d / 10 PASSED", totalPass);
+    if (totalPass == 10)
     {
         print("OVERALL RESULT: ALL STOCK HELPER CONTRACT TESTS PASSED!");
     }
@@ -469,7 +596,7 @@ PrintSummaryAndExit()
 
 public OnGameModeInit()
 {
-    print("\n[TEST-START] Starting SUI Phase 12.2 Stock Helper Contract Suite (AS1-AS9)...");
+    print("\n[TEST-START] Starting SUI Phase 12.3 Stock Helper Contract Suite (AS1-AS10)...");
     SUI_SetDebug(true);
 
     Test_AS1_ValidRegistration();
@@ -481,6 +608,7 @@ public OnGameModeInit()
     Test_AS7_UsableConfig();
     Test_AS8_NoPartialState();
     Test_AS9_ExistingGroupSafety();
+    Test_AS10_CallbackIsolation();
 
     PrintSummaryAndExit();
     return 1;

@@ -100,8 +100,9 @@ Composes 5 real C++ natives sequentially:
 5. `SUI_SetGroupEvictable(playerid, group, evictable)`
 
 **Analysis:**
-The helper introduces no new runtime behavior; it is purely syntactic sugar for gamemode convenience. In Phase 12.1 and Phase 12.2, it was hardened following the **Prevalidated Truthful Helper model (Model B)**:
+The helper introduces no new runtime behavior; it is purely syntactic sugar for gamemode convenience. In Phase 12.1, 12.2, and 12.3, it was hardened following the **Prevalidated Truthful Helper model (Model B)**:
 - Parameter prevalidation defends against out-of-bounds configurations (rejecting negative sizes, negative timeouts, or out-of-bounds priorities) before invoking `SUI_CreatePlayerFactoryGroup`.
-- If a subsequent setter fails (for example, attempting to re-register an already-created group whose size cannot be changed), the helper returns `0` immediately without calling `SUI_DestroyGroup`.
-- This eliminates the destructive rollback hazard where a failed helper call on an existing group could inadvertently destroy live player UI.
+- If the target group is already created (`SUI_IsGroupCreated(playerid, group) == true`), the helper returns `0` immediately before native registration, guaranteeing that live UI groups reject re-registration without mutating callback strings, visibility, or active textdraw capacity.
+- If a subsequent setter fails on an uncreated group, the helper returns `0` without calling `SUI_DestroyGroup`.
+- This eliminates both the destructive rollback hazard and the partial callback-mutation defect.
 - Return value contract: `1` indicates complete registration and configuration success; `0` indicates any validation, registration, or setter failure.

@@ -227,10 +227,10 @@ native SUI_SetDebug(bool:enabled);
  * Convenience stock to register a factory group and configure initial size, timeout, priority, and eviction.
  * Prevalidates arguments and executes all configuration setters sequentially.
  * 
- * Note: If prevalidation or initial registration fails, no group is created. If a downstream
- * setter fails (e.g. attempting to configure an already-created group whose size cannot be changed),
- * this helper returns 0 without calling SUI_DestroyGroup, ensuring existing live UI groups
- * are never inadvertently destroyed.
+ * Note: If prevalidation fails or if the target group is already created (live), this helper
+ * returns 0 immediately without mutating registration or callback metadata. Existing live UI
+ * groups remain fully intact with their original callback contracts authoritative. For an existing
+ * uncreated group, configuration and callback updates proceed normally.
  * 
  * @param playerid Target player ID (must be valid: 0 <= playerid < 1000)
  * @param group Unique group name
@@ -259,6 +259,12 @@ stock SUI_RegisterGroup(
 {
     // Prevalidate configuration arguments matching native validation contracts
     if (size < 0 || timeout_ms < 0 || priority < SUI_PRIORITY_LOW || priority > SUI_PRIORITY_CRITICAL)
+    {
+        return 0;
+    }
+
+    // Reject re-registering an already-created group to prevent mutating live callback contract
+    if (SUI_IsGroupCreated(playerid, group))
     {
         return 0;
     }

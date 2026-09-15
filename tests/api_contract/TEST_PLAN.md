@@ -1,4 +1,4 @@
-# SUI Phase 12.2: Public API Contract Test Plan (AP1–AP8, AS1–AS9)
+# SUI Phase 12.3: Public API Contract Test Plan (AP1–AP8, AS1–AS10)
 
 ## Objective
 Verify that all public SUI declarations in `pawn/sui.inc`, runtime AMX native registrations in `src/main.cpp`, C++ dispatchers in `src/Natives.hpp` and `src/Natives.cpp`, core data structures in `src/Core.hpp` and `src/Core.cpp`, documentation in `docs/API_REFERENCE.md` and `README.md`, and shipped code in `examples/` are 100% synchronized, truthful, and free of tag mismatches, phantom declarations, or broken example scripts.
@@ -20,7 +20,7 @@ Verify that all public SUI declarations in `pawn/sui.inc`, runtime AMX native re
 
 ---
 
-## Runtime Stock Helper Verification Scenarios (AS1–AS9)
+## Runtime Stock Helper Verification Scenarios (AS1–AS10)
 
 Suite script: `tests/api_contract/api_contract_runtime.pwn`
 
@@ -35,6 +35,7 @@ Suite script: `tests/api_contract/api_contract_runtime.pwn`
 | **AS7** | Usable Lifecycle | Valid registered group operates cleanly through full lifecycle: show, touch, hide, state queries. | PASS (return 1) |
 | **AS8** | Prevalidation Cleanliness | Prevalidation rejects invalid priority (99) before registration native is invoked; leaves zero group state. | PASS (return 1) |
 | **AS9** | Existing Group Safety | Calling `SUI_RegisterGroup` on an already-created group fails safely (size change rejected) without calling `SUI_DestroyGroup`; live group, visibility, and active textdraw count remain intact. | PASS (return 1) |
+| **AS10** | Callback Isolation | Calling `SUI_RegisterGroup` with new callbacks on an already-created group fails safely (return 0) before native registration; original callbacks remain authoritative through subsequent hide, show, and destroy; new callbacks receive zero calls. | PASS (return 1) |
 
 ---
 

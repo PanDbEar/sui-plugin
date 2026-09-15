@@ -179,15 +179,15 @@
   - Exactly 19 public C++ natives (18 player-specific + 1 global) and 1 stock helper (`SUI_RegisterGroup`) are registered, declared, and documented.
   - Aligned return value contracts: documented that untagged natives return `1` on success and `0` on failure (or parameter error), and `bool:` tagged natives return `true` or `false`.
   - Documented zero idle timeout semantics (`timeout_ms = 0` triggers immediate destruction on next server tick, does not disable idle timer).
-  - In Phase 12.1 and 12.2, audited and hardened `SUI_RegisterGroup` stock helper following the Prevalidated Truthful Helper model (Model B). Prevalidates size, timeout, and priority arguments to eliminate malformed registration attempts. Removed destructive `SUI_DestroyGroup` call from the helper failure path (preventing accidental destruction of live UI groups when re-registering already created groups). Guaranteed truthful return semantics: `1` indicates complete setup success, `0` indicates any validation, registration, or configuration failure.
+  - In Phase 12.1, 12.2, and 12.3, audited and hardened `SUI_RegisterGroup` stock helper following the Prevalidated Truthful Helper model (Model B). Prevalidates size, timeout, and priority arguments to eliminate malformed registration attempts. Screened against already-created groups via `SUI_IsGroupCreated` to reject live re-registration before mutating callback strings, guaranteeing complete callback contract isolation. Removed destructive `SUI_DestroyGroup` call from the helper failure path. Guaranteed truthful return semantics: `1` indicates complete setup success, `0` indicates any validation, registration, or configuration failure.
   - Aligned callback contract documentation with SUI-006 decoupled execution semantics (transitions governed by `AMX_ERR_NONE`, Pawn return value is purely informational).
   - Created automated static API contract verification suite `tests/api_contract/check_api_surface.py` covering 7 programmatic validation checks (AP1 through AP7).
-  - Created permanent runtime test suite `tests/api_contract/api_contract_runtime.pwn` covering scenarios AS1 through AS9 (9/9 PASS).
+  - Created permanent runtime test suite `tests/api_contract/api_contract_runtime.pwn` covering scenarios AS1 through AS10 (10/10 PASS).
   - Fixed legacy example script `examples/factory_login_example.pwn` (migrated from open.mp to legacy SA-MP `a_samp.inc`, fixed callback declarations and fallback constants).
   - Shortened overlength function names in `tests/player_id_validation/player_id_validation.pwn` to prevent Pawn compiler symbol truncation warnings.
-- **Verification:** Verified via automated script `tests/api_contract/check_api_surface.py` (7/7 PASS). Verified compilation of all 18 `.pwn` scripts (1 example + 17 test scripts) using Pawn compiler 3.2.3664 with 0 errors and 0 warnings. Verified live execution of all 11 permanent test suites on headless 32-bit Linux SA-MP dedicated server (`samp03svr`) with cumulative 150 / 150 PASS (100%).
+- **Verification:** Verified via automated script `tests/api_contract/check_api_surface.py` (7/7 PASS). Verified compilation of all 18 `.pwn` scripts (1 example + 17 test scripts) using Pawn compiler 3.2.3664 with 0 errors and 0 warnings. Verified live execution of all 11 permanent test suites on headless 32-bit Linux SA-MP dedicated server (`samp03svr`) with cumulative 151 / 151 PASS (100%).
 - **Evidence:** `pawn/sui.inc`, `src/main.cpp:14-38`, `src/Natives.cpp`, `docs/API_REFERENCE.md`, `docs/API_INVENTORY.md`, `README.md`, `examples/factory_login_example.pwn`, `tests/api_contract/check_api_surface.py`, `tests/api_contract/api_contract_runtime.pwn`.
-- **Planned phase:** Phase 12 / Phase 12.1 / Phase 12.2
+- **Planned phase:** Phase 12 / Phase 12.1 / Phase 12.2 / Phase 12.3
 
 ---
 

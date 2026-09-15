@@ -18,9 +18,9 @@ This document defines the authoritative configuration, script dependencies, fixt
 | **eviction_preflight** | `eviction_preflight` | `eviction_preflight_filterscript` | *(none)* | 15 | 15 / 15 PASS | Yes |
 | **show_failure_lifecycle** | `show_failure_lifecycle` | *(none)* | *(none)* | 10 | 10 / 10 PASS | Yes |
 | **player_id_validation** | `player_id_validation` | *(none)* | *(none)* | 14 | 14 / 14 PASS | Yes |
-| **api_contract_runtime** | `api_contract_runtime` | *(none)* | *(none)* | 9 | 9 / 9 PASS | Yes |
+| **api_contract_runtime** | `api_contract_runtime` | *(none)* | *(none)* | 10 | 10 / 10 PASS | Yes |
 
-**Total Permanent Suite Pass Rate:** **150 / 150 PASS (100%)**
+**Total Permanent Suite Pass Rate:** **151 / 151 PASS (100%)**
 
 ---
 
@@ -137,8 +137,9 @@ This document defines the authoritative configuration, script dependencies, fixt
   3. Zero Inadvertent Destruction: If a setter fails after registration (e.g. attempting to re-register an already created group), `SUI_RegisterGroup` returns `0` without calling `SUI_DestroyGroup`, preserving active UI groups and textdraw accounting.
   4. Clean Subsequent Registration: A prevalidation rejection leaves zero state in `PlayerContext`; subsequent registration under the same group name succeeds with full lifecycle functionality.
   5. Complete Lifecycle Usability: Groups registered via the helper are fully functional through creation, show, touch, hide, state query, and destruction.
-- **Assertions:** AS1–AS9 (9 tests)
-- **Exit Behavior:** Server automatically terminates via RCON upon completing AS9.
+  6. Callback Metadata Isolation: Calling `SUI_RegisterGroup` on an already-created group is screened and rejected before registration native is invoked, preserving original callback routing and preventing callback substitution.
+- **Assertions:** AS1–AS10 (10 tests)
+- **Exit Behavior:** Server automatically terminates via RCON upon completing AS10.
 
 ---
 
