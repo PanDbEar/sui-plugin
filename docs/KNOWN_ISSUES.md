@@ -23,7 +23,7 @@
 | **SUI-011** | High | AMX / Loading | Non-standard AMX native registration behavior | `FIXED` | Phase 2 |
 | **SUI-012** | Low | Repo / Build | Orphaned open.mp component prototype and unused header | `FIXED — orphaned component architecture removed` | Phase 13 |
 | **SUI-013** | High | Repo / Git | Repository dependency / nested Git metadata handling | `RESOLVED` | Pre-Release |
-| **SUI-014** | Medium | QA / Tooling | Missing automated tests and CI | `CONFIRMED` | Phase 2 |
+| **SUI-014** | Medium | QA / Tooling | Missing automated tests and CI | `FIXED — reproducible test automation and CI gates verified` | Phase 14 |
 | **SUI-015** | Medium | Build / Packaging | Release packaging not yet defined | `CONFIRMED` | Pre-Release |
 | **SUI-016** | Medium | Core / Resource Lifecycle | Owner-unload external UI resource cleanup limitation | `CONFIRMED` | Phase 5 |
 | **SUI-017** | High | Core / Lifecycle / Identity | Re-entrant group replacement / generation identity confusion | `FIXED — runtime regression verified` | Phase 6 |
@@ -236,11 +236,17 @@
 - **ID:** SUI-014
 - **Severity:** Medium
 - **Area:** QA / Tooling
-- **Status:** CONFIRMED
-- **Current behavior:** No unit test suite, mock AMX environment, or automated CI build workflows exist.
-- **Risk:** Inability to detect regressions automatically across pull requests or platforms.
-- **Evidence:** Root directory lacks test framework and CI configurations.
-- **Planned phase:** Phase 2
+- **Status:** FIXED — reproducible test automation and CI gates verified
+- **Fix Summary:**
+  - Designed and implemented formal Three Evidence Layers architecture: Layer A (Static contract checks), Layer B (Build & compilation contract), Layer C (Live runtime regression on headless SA-MP server).
+  - Created repository-owned Pawn compiler tool `scripts/compile_pawn.py` supporting portable check-only verification and server deployment.
+  - Created repository-owned runtime test runner `scripts/run_regression.py` orchestrating live execution of all 11 permanent test suites on `samp03svr` with 151 / 151 assertions.
+  - Created repository-owned server provisioning tool `scripts/setup_test_server.py` to acquire and prepare `samp03svr` without committing proprietary binaries to version control.
+  - Created GitHub Actions CI workflow `.github/workflows/ci.yml` executing all three evidence layers on Ubuntu Linux with `-m32`.
+  - Documented CI architecture, toolchain provenance, and local replication guide in `docs/CI.md`.
+- **Verification:** Layer A verified (AP1–AP7 7/7 PASS, RC1–RC5 5/5 PASS). Layer B verified (ELF32, Intel 80386, 6 exports, 18/18 Pawn compilation). Layer C verified live on `samp03svr` with 151 / 151 PASS (100%).
+- **Evidence:** `.github/workflows/ci.yml`, `scripts/compile_pawn.py`, `scripts/run_regression.py`, `scripts/setup_test_server.py`, `docs/CI.md`.
+- **Planned phase:** Phase 14
 
 ---
 

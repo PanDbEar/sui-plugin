@@ -1,0 +1,103 @@
+name: SUI Continuous Integration
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  ci-gates:
+    name: SUI Regression & Verification Gates
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout Repository with Submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python 3
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # -----------------------------------------------------------------
+      # LAYER A: Static Repository Contract Gates
+      # -----------------------------------------------------------------
+      - name: Layer A — Verify Public API Surface Contract (SUI-010)
+        run: python tests/api_contract/check_api_surface.py
+
+      - name: Layer A — Verify Source Surface & CMake Alignment (SUI-012)
+        run: python tests/repo_contract/check_source_surface.py
+
+      # -----------------------------------------------------------------
+      # LAYER B: Build & Compilation Contract Gates
+      # -----------------------------------------------------------------
+      - name: Install 32-bit Multilib Toolchain
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib g++-multilib libc6:i386 libstdc++6:i386 cmake file
+
+      - name: Layer B — Configure & Build Release Plugin (ELF32 / -m32)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release --parallel $(nproc)
+
+      - name: Layer B — Verify Binary Architecture (ELF32 / Intel 80386)
+        run: |
+          file build/sui-plugin-legacy.so
+          readelf -h build/sui-plugin-legacy.so | grep -E 'Class|Machine|Type'
+          # Assert ELF32
+          readelf -h build/sui-plugin-legacy.so | grep -q "ELF32"
+          # Assert Intel 80386
+          readelf -h build/sui-plugin-legacy.so | grep -q "Intel 80386"
+
+      - name: Layer B — Verify Canonical C Plugin Exports
+        run: |
+          nm -D --defined-only build/sui-plugin-legacy.so | grep -E '(^| )T (Supports|Load|Unload|AmxLoad|AmxUnload|ProcessTick)$'
+          export_count=$(nm -D --defined-only build/sui-plugin-legacy.so | grep -E -c '(^| )T (Supports|Load|Unload|AmxLoad|AmxUnload|ProcessTick)$')
+          if [ "$export_count" -ne 6 ]; then
+            echo "ERROR: Expected exactly 6 canonical exports, found $export_count"
+            exit 1
+          fi
+
+      - name: Setup Pawn Compiler & Standard Includes
+        run: |
+          mkdir -p tools/pawn
+          # Download Pawn compiler (v3.10.10 Linux)
+          curl -L -s https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-linux.tar.gz | tar -xz -C tools/pawn --strip-components=1
+          chmod +x tools/pawn/bin/pawncc
+          # Clone standard Pawn and SA-MP includes
+          git clone --depth 1 https://github.com/pawn-lang/pawn-stdlib.git tools/pawn-stdlib
+          git clone --depth 1 https://github.com/pawn-lang/samp-stdlib.git tools/samp-stdlib
+
+      - name: Layer B — Verify Pawn Fixture Compilation (18 / 18 Scripts)
+        run: |
+          python scripts/compile_pawn.py \
+            --compiler tools/pawn/bin/pawncc \
+            --includes "tools/pawn-stdlib,tools/samp-stdlib" \
+            --check-only
+
+      # -----------------------------------------------------------------
+      # LAYER C: Live Runtime Regression Gates
+      # -----------------------------------------------------------------
+      - name: Setup Headless SA-MP Server Environment
+        run: |
+          python scripts/setup_test_server.py --dest test-server
+
+      - name: Compile Runtime Test Fixtures into Server Layout
+        run: |
+          python scripts/compile_pawn.py \
+            --compiler tools/pawn/bin/pawncc \
+            --includes "tools/pawn-stdlib,tools/samp-stdlib" \
+            --output-dir test-server
+
+      - name: Deploy SUI Plugin into Server Environment
+        run: |
+          cp build/sui-plugin-legacy.so test-server/plugins/sui-plugin-legacy.so
+
+      - name: Layer C — Execute 11 Permanent Regression Suites (151 Assertions)
+        run: |
+          python scripts/run_regression.py --server-dir test-server

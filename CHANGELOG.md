@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **SUI-014**: Reproducible Test Automation, CI Gates, and Runtime Regression Infrastructure. Status: `FIXED — reproducible test automation and CI gates verified`.
+  - Converted manual verification procedures and scratch scripts into reproducible, repository-owned automation tooling without weakening platform constraints (-m32 / Linux x86 ELF32) or committing proprietary binaries.
+  - Implemented formal Three Evidence Layers architecture: Layer A (Static repository contract), Layer B (Build & compilation contract), Layer C (Live runtime regression).
+  - Created `scripts/compile_pawn.py`: repository-owned tool for compiling and verifying all 18 Pawn scripts (0 errors, 0 warnings), auto-detecting compiler and standard includes.
+  - Created `scripts/run_regression.py`: repository-owned regression runner driving live execution across all 11 permanent test suites on headless SA-MP server (`samp03svr`) with exact 151 / 151 assertion tracking.
+  - Created `scripts/setup_test_server.py`: server provisioning tool to acquire and prepare SA-MP 0.3.7-R2 Linux server environment dynamically for CI and local workflows.
+  - Created `.github/workflows/ci.yml`: GitHub Actions CI pipeline executing all three evidence layers on Ubuntu Linux runners with 32-bit multilib toolchain.
+  - Created `docs/CI.md` documenting the three evidence layers, toolchain provenance, and local replication instructions.
 - **SUI-012**: Orphaned Component / Compat / open.mp Prototype Audit and Source-Surface Cleanup. Status: `FIXED — orphaned component architecture removed`.
   - Audited repository source surface and build graph synchronization against legacy SA-MP 0.3.7-R2 requirements.
   - Permanently removed uncompiled open.mp C++ Component SDK prototype files `src/Component.cpp` and `src/Component.hpp`.
@@ -124,6 +132,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **SUI-011**: Corrected AMX native registration in `AmxLoad`. Replaced non-standard `amx_FindNative` / `amx_Redirect` loop with standard `amx_Register(amx, natives, -1)`, properly resolving SUI natives in the host server's AMX native table and unblocking AMX script execution (eliminating `Run time error 19: "File or function is not found"`). Removed obsolete `#include "amx/amx2.h"` from `src/main.cpp`.
 
 ### Added
+- Created `scripts/compile_pawn.py` providing repository-owned compilation and check-only verification across all 18 Pawn scripts.
+- Created `scripts/run_regression.py` providing repository-owned live runtime execution across all 11 permanent test suites on SA-MP dedicated server.
+- Created `scripts/setup_test_server.py` for automated, non-redistributed provisioning of SA-MP test servers.
+- Created `.github/workflows/ci.yml` defining automated GitHub Actions CI gates across Layer A, Layer B, and Layer C.
+- Created `docs/CI.md` documenting three-layer evidence architecture, toolchain provenance, and local replication guide.
 - Created `tests/api_contract/TEST_PLAN.md` documenting static API contract verification scenarios AP1 through AP8.
 - Created `tests/api_contract/check_api_surface.py` implementing automated programmatic validation across 7 API consistency checks (AP1 native count, AP2 registration-include parity, AP3 stock distinction, AP4 parameter count match, AP5 handler declarations/definitions, AP6 documentation sync, AP7 priority constant sync).
 - Created `tests/player_id_validation/TEST_PLAN.md` documenting player ID domain validation, boundary checks, and phantom context prevention test scenarios PV1 through PV14.

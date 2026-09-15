@@ -2,6 +2,7 @@
 
 [![C++ Standard](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.wikipedia.org/wiki/C%2B%2B20)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20x86%20(32--bit)-orange.svg)](docs/BUILD.md)
+[![CI](https://img.shields.io/badge/CI-Automated%20Gates%20(3--Layer)-brightgreen.svg)](docs/CI.md)
 [![Status](https://img.shields.io/badge/Status-Pre--Release%20Baseline-lightgrey.svg)](docs/KNOWN_ISSUES.md)
 
 **SUI (Smart UI Virtualizer)** is an intelligent UI lifecycle manager and PlayerTextDraw virtualizer designed for SA-MP and open.mp legacy plugin environments.
@@ -243,14 +244,14 @@ Copy `build/sui-plugin-legacy.so` to your server's `plugins/` directory and incl
 
 ## Engineering Status & Roadmap
 
-This project is currently at **Phase 0.1 Baseline**. A comprehensive technical audit was performed to catalog existing vulnerabilities prior to runtime refactoring:
+This project is currently verified across **11 permanent runtime test suites (151 assertions, 100% PASS)**:
 
 - [x] **Phase 0 / 0.1**: Truthful baseline, repository hygiene, synchronized API inventory, issue ledger, build documentation.
-- [ ] **Phase 1**: Critical runtime stability — resolve re-entrancy / iterator invalidation (SUI-001), AMX ownership (SUI-002), return code trap (SUI-006), and registration behavior (SUI-011).
-- [ ] **Phase 2**: Capacity engine & validation — non-destructive eviction (SUI-007), overflow safety (SUI-004), automated test harness (SUI-014).
-- [ ] **Phase 3**: Platform & ecosystem — release packaging (SUI-015), automated CI (SUI-014).
+- [x] **Phase 1**: Critical runtime stability — resolve re-entrancy / iterator invalidation (SUI-001), AMX ownership (SUI-002), return code trap (SUI-006), and registration behavior (SUI-011).
+- [x] **Phase 2**: Capacity engine & validation — non-destructive eviction (SUI-007), overflow safety (SUI-004), automated test harness and CI (SUI-014).
+- [ ] **Phase 3**: Platform & ecosystem — release packaging (SUI-015).
 
-Review the active issue ledger in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
+Review the test and CI architecture in [docs/CI.md](docs/CI.md) and active issue ledger in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
 
 ---
 
