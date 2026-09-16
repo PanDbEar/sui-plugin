@@ -137,8 +137,8 @@ cell AMX_NATIVE_CALL Natives::SUI_SetIdleTimeout(AMX* amx, cell* params)
         return 0;
     }
 
-    SUICore::SetIdleTimeout(playerId, group, timeoutMs);
-    return 1;
+    bool ok = SUICore::SetIdleTimeout(playerId, group, timeoutMs);
+    return ok ? 1 : 0;
 }
 
 cell AMX_NATIVE_CALL Natives::SUI_CleanupPlayer(AMX* amx, cell* params)
@@ -314,8 +314,8 @@ cell AMX_NATIVE_CALL Natives::SUI_SetGroupPriority(AMX* amx, cell* params)
         return 0;
     }
 
-    SUICore::SetGroupPriority(playerId, group, priority);
-    return 1;
+    bool ok = SUICore::SetGroupPriority(playerId, group, priority);
+    return ok ? 1 : 0;
 }
 
 cell AMX_NATIVE_CALL Natives::SUI_DestroyGroup(AMX* amx, cell* params)
@@ -428,8 +428,8 @@ cell AMX_NATIVE_CALL Natives::SUI_SetGroupEvictable(AMX* amx, cell* params)
 
     bool enabled = (params[3] != 0);
 
-    SUICore::SetGroupEvictable(playerId, group, enabled);
-    return 1;
+    bool ok = SUICore::SetGroupEvictable(playerId, group, enabled);
+    return ok ? 1 : 0;
 }
 
 cell AMX_NATIVE_CALL Natives::SUI_IsGroupEvictable(AMX* amx, cell* params)

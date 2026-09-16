@@ -25,7 +25,7 @@
 | **SUI-013** | High | Repo / Git | Repository dependency / nested Git metadata handling | `RESOLVED` | Pre-Release |
 | **SUI-014** | Medium | QA / Tooling | Missing automated tests and CI | `FIXED — Reproducible repository automation and GitHub-hosted CI verified` | Phase 14 / 14.1 / 14.2 |
 | **SUI-015** | Medium | Build / Packaging | Release packaging not yet defined | `FIXED — Deterministic release packaging and distribution contract verified` | Phase 15 |
-| **SUI-016** | Medium | Core / Resource Lifecycle | Owner-unload external UI resource cleanup limitation | `FIXED — Explicit owner-AMX pre-unload lifecycle cleanup verified` | Phase 16.1 |
+| **SUI-016** | Medium | Core / Resource Lifecycle | Owner-unload external UI resource cleanup limitation | `FIX PENDING VERIFICATION REPAIR` | Phase 16.1 / 16.1.1 |
 | **SUI-017** | High | Core / Lifecycle / Identity | Re-entrant group replacement / generation identity confusion | `FIXED — runtime regression verified` | Phase 6 |
 | **SUI-018** | Medium | Core / Resource Lifecycle | In-flight callback execution error leaves partial external UI resources in indeterminate state | `CONFIRMED` | Phase 8 |
 
@@ -275,7 +275,7 @@
 - **ID:** SUI-016
 - **Severity:** Medium
 - **Area:** Core / Resource Lifecycle
-- **Status:** FIXED — Explicit owner-AMX pre-unload lifecycle cleanup verified
+- **Status:** FIX PENDING VERIFICATION REPAIR
 - **Fix Summary:**
   - Implemented Model E (Explicit Owner-AMX Pre-Unload Cleanup) providing `native SUI_CleanupOwnerGroups();` (0 parameters, AMX inferred from caller).
   - Enables scripts to invoke registered lifecycle callbacks (`cbHide`, `cbDestroy`) while the calling AMX is still fully valid, allowing user code to execute `PlayerTextDrawDestroy` and reclaim host resources before script teardown.

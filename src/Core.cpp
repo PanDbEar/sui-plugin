@@ -997,7 +997,7 @@ bool SUICore::HideGroup(int playerId, const std::string& groupName)
     }
 }
 
-void SUICore::SetIdleTimeout(int playerId, const std::string& groupName, uint32_t timeoutMs)
+bool SUICore::SetIdleTimeout(int playerId, const std::string& groupName, uint32_t timeoutMs)
 {
     auto* ctx = GetPlayerContext(playerId);
     if (!ctx || ctx->teardownState != PlayerTeardownState::None)
@@ -1006,7 +1006,7 @@ void SUICore::SetIdleTimeout(int playerId, const std::string& groupName, uint32_
             playerId,
             groupName.c_str()
         );
-        return;
+        return false;
     }
 
     auto it = ctx->groups.find(groupName);
@@ -1016,7 +1016,7 @@ void SUICore::SetIdleTimeout(int playerId, const std::string& groupName, uint32_
         {
             Debug("SetIdleTimeout rejected: group %s owner amx=%p is undergoing owner cleanup playerid=%d",
                 groupName.c_str(), it->second.ownerAmx, playerId);
-            return;
+            return false;
         }
 
         it->second.idleTimeoutMs = timeoutMs;
@@ -1026,6 +1026,7 @@ void SUICore::SetIdleTimeout(int playerId, const std::string& groupName, uint32_
             groupName.c_str(),
             timeoutMs
         );
+        return true;
     }
     else
     {
@@ -1033,6 +1034,7 @@ void SUICore::SetIdleTimeout(int playerId, const std::string& groupName, uint32_
             playerId,
             groupName.c_str()
         );
+        return false;
     }
 }
 
@@ -1494,7 +1496,7 @@ bool SUICore::SetEvictionThreshold(int playerId, uint32_t threshold)
     return true;
 }
 
-void SUICore::SetGroupPriority(int playerId, const std::string& groupName, uint8_t priority)
+bool SUICore::SetGroupPriority(int playerId, const std::string& groupName, uint8_t priority)
 {
     auto* ctx = GetPlayerContext(playerId);
     if (!ctx || ctx->teardownState != PlayerTeardownState::None)
@@ -1503,7 +1505,7 @@ void SUICore::SetGroupPriority(int playerId, const std::string& groupName, uint8
             playerId,
             groupName.c_str()
         );
-        return;
+        return false;
     }
 
     auto it = ctx->groups.find(groupName);
@@ -1513,14 +1515,14 @@ void SUICore::SetGroupPriority(int playerId, const std::string& groupName, uint8
             playerId,
             groupName.c_str()
         );
-        return;
+        return false;
     }
 
     if (IsOwnerCleanupActive(it->second.ownerAmx))
     {
         Debug("SetGroupPriority rejected: group %s owner amx=%p is undergoing owner cleanup playerid=%d",
             groupName.c_str(), it->second.ownerAmx, playerId);
-        return;
+        return false;
     }
 
     if (priority > SUI_PRIORITY_CRITICAL)
@@ -1535,6 +1537,7 @@ void SUICore::SetGroupPriority(int playerId, const std::string& groupName, uint8
         groupName.c_str(),
         static_cast<unsigned>(priority)
     );
+    return true;
 }
 
 void SUICore::MarkGroupDestroyed(PlayerContext& ctx, SUIGroup& group)
@@ -2046,7 +2049,7 @@ void SUICore::PrintPlayerState(int playerId)
     logprintf("[SUI] =================================================");
 }
 
-void SUICore::SetGroupEvictable(int playerId, const std::string& groupName, bool enabled)
+bool SUICore::SetGroupEvictable(int playerId, const std::string& groupName, bool enabled)
 {
     auto* ctx = GetPlayerContext(playerId);
     if (!ctx || ctx->teardownState != PlayerTeardownState::None)
@@ -2055,7 +2058,7 @@ void SUICore::SetGroupEvictable(int playerId, const std::string& groupName, bool
             playerId,
             groupName.c_str()
         );
-        return;
+        return false;
     }
 
     auto it = ctx->groups.find(groupName);
@@ -2065,14 +2068,14 @@ void SUICore::SetGroupEvictable(int playerId, const std::string& groupName, bool
             playerId,
             groupName.c_str()
         );
-        return;
+        return false;
     }
 
     if (IsOwnerCleanupActive(it->second.ownerAmx))
     {
         Debug("SetGroupEvictable rejected: group %s owner amx=%p is undergoing owner cleanup playerid=%d",
             groupName.c_str(), it->second.ownerAmx, playerId);
-        return;
+        return false;
     }
 
     it->second.evictable = enabled;
@@ -2082,6 +2085,7 @@ void SUICore::SetGroupEvictable(int playerId, const std::string& groupName, bool
         groupName.c_str(),
         enabled ? 1 : 0
     );
+    return true;
 }
 
 bool SUICore::IsGroupEvictable(int playerId, const std::string& groupName)

@@ -8,6 +8,7 @@ Performs static verification to guarantee:
 - RC3: src/ contains exactly the canonical 6 files (Core.cpp, Core.hpp, main.cpp, Natives.cpp, Natives.hpp, Utils.hpp).
 - RC4: All files listed in CMake SOURCES exist on disk.
 - RC5: Orphaned Component/Compat files are absent from src/ and git index.
+- RC6: Portable automation path contract: scripts/, .github/workflows/, tests/ contain 0 developer-specific path literals.
 """
 
 import sys
@@ -150,6 +151,46 @@ def main():
         print("[RC5] PASS: Orphaned Component/Compat files completely absent from disk and tracked git index.")
     else:
         print(f"[RC5] FAIL: Orphaned files still present: disk={disk_orphans}, git_tracked={git_orphans}")
+
+    # 6. RC6: Portable automation path contract (zero developer-specific path literals)
+    total_checks += 1
+    banned_patterns = [
+        re.compile(r"C:\\Users\\alifc", re.IGNORECASE),
+        re.compile(r"/home/pandbear", re.IGNORECASE),
+        re.compile(r"/mnt/c/Users/alifc", re.IGNORECASE),
+        re.compile(r"\.gemini[/\\]"),
+        re.compile(r"Texture Studio", re.IGNORECASE),
+    ]
+    scan_targets = [
+        root / "scripts",
+        root / ".github" / "workflows",
+        root / "tests",
+    ]
+    path_violations = []
+    this_file = Path(__file__).resolve()
+    for target_dir in scan_targets:
+        if not target_dir.exists():
+            continue
+        for p in target_dir.rglob("*"):
+            if not p.is_file() or p.resolve() == this_file:
+                continue
+            if p.suffix in [".py", ".sh", ".yml", ".yaml"]:
+                try:
+                    content = p.read_text(encoding="utf-8", errors="replace")
+                    for pat in banned_patterns:
+                        m = pat.search(content)
+                        if m:
+                            path_violations.append(f"{p.relative_to(root)}: '{m.group(0)}'")
+                except Exception:
+                    pass
+
+    if not path_violations:
+        checks_passed += 1
+        print("[RC6] PASS: Portable automation path contract verified (developer-specific automation paths: 0).")
+    else:
+        print(f"[RC6] FAIL: Found {len(path_violations)} developer-specific path violation(s):")
+        for v in path_violations:
+            print(f"  - {v}")
 
     print("==================================================")
     print(f" TOTAL RESULT: {checks_passed} / {total_checks} CHECKS PASSED")

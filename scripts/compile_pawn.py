@@ -51,7 +51,6 @@ def resolve_compiler(explicit_path: str = None):
 
     # Common fallback candidate paths
     candidates = [
-        Path(r"C:\Users\alifc\Downloads\Project\Texture Studio\pawno\pawncc.exe"),
         Path("tools/pawn/bin/pawncc"),
         Path("pawno/pawncc.exe"),
         Path(r"C:\pawno\pawncc.exe"),
@@ -75,7 +74,6 @@ def resolve_includes(explicit_path: str = None):
 
     # Common fallback candidate paths
     candidates = [
-        Path(r"C:\Users\alifc\Downloads\Project\Texture Studio\pawno\include"),
         Path("tools/samp-stdlib"),
         Path("tools/pawn-stdlib"),
         Path("pawno/include"),
@@ -135,6 +133,9 @@ def main():
         inc_resolved = resolve_includes()
         if inc_resolved:
             includes_list.append(inc_resolved)
+            sibling_pawn = inc_resolved.parent / "pawn-stdlib"
+            if sibling_pawn.exists() and (sibling_pawn / "core.inc").exists():
+                includes_list.append(sibling_pawn)
 
     if not includes_list:
         print("ERROR: SA-MP includes directory (containing a_samp.inc) not found.")
@@ -195,19 +196,29 @@ def main():
         ])
 
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, env=proc_env)
-            output = (res.stdout or "") + (res.stderr or "")
+            output = ""
+            success = False
+            for attempt in range(3):
+                res = subprocess.run(cmd, capture_output=True, text=True, env=proc_env)
+                output = (res.stdout or "") + (res.stderr or "")
 
-            has_error = "Error" in output or "error" in output
-            has_warning = "Warning" in output or "warning" in output
+                has_error = "Error" in output or "error" in output
+                has_warning = "Warning" in output or "warning" in output
+                amx_created = amx_out.exists()
 
-            # Also verify amx was actually generated if no errors
-            amx_created = amx_out.exists()
+                if res.returncode == 0 and not has_error and not has_warning and (amx_created or args.check_only):
+                    success = True
+                    break
 
-            if args.check_only and amx_created:
+                if "cannot read from file" in output and attempt < 2:
+                    import time
+                    time.sleep(0.1)
+                    continue
+
+            if args.check_only and amx_out.exists():
                 amx_out.unlink()
 
-            if res.returncode == 0 and not has_error and not has_warning and (amx_created or args.check_only):
+            if success:
                 print(f"[PASS] {str(rel):52s} 0 errors, 0 warnings")
                 passed_count += 1
             else:

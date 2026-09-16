@@ -69,18 +69,24 @@ public CheckConnectTimeout()
 forward GM_TryMutateA_Group(playerid);
 public GM_TryMutateA_Group(playerid)
 {
-    // During AMX A's cleanup, foreign AMX (Gamemode) attempts mutating A's group
+    // During AMX A's cleanup, foreign AMX (Gamemode) attempts mutating A's group across all 8 mutation APIs
     new r1 = SUI_ShowGroup(playerid, "u11_grp");
     new r2 = SUI_HideGroup(playerid, "u11_grp");
     new r3 = SUI_DestroyGroup(playerid, "u11_grp");
+    new r4 = SUI_SetIdleTimeout(playerid, "u11_grp", 1000);
+    new r5 = SUI_SetGroupPriority(playerid, "u11_grp", 1);
+    new r6 = SUI_SetGroupEvictable(playerid, "u11_grp", true);
+    new r7 = SUI_SetGroupSize(playerid, "u11_grp", 5);
+    new r8 = SUI_TouchGroup(playerid, "u11_grp");
 
-    if (r1 == 0 && r2 == 0 && r3 == 0)
+    if (r1 == 0 && r2 == 0 && r3 == 0 && r4 == 0 && r5 == 0 && r6 == 0 && r7 == 0 && r8 == 0)
     {
         g_u11_gm_mutations_rejected = 1;
     }
     else
     {
-        printf("[GM] U11 Target Mutation Guard Leak: r1=%d r2=%d r3=%d", r1, r2, r3);
+        printf("[GM] U11 Target Mutation Guard Leak: r1=%d r2=%d r3=%d r4=%d r5=%d r6=%d r7=%d r8=%d",
+            r1, r2, r3, r4, r5, r6, r7, r8);
     }
     return 1;
 }
@@ -119,6 +125,18 @@ forward StartOwnerCleanupTests();
 public StartOwnerCleanupTests()
 {
     print("\n--- Starting SUI-016 AMX Unload Cleanup Tests (U1-U14) ---");
+
+    // Verify direct setter failure contract on non-existent group
+    new fail_idle = SUI_SetIdleTimeout(g_NpcId, "nonexistent_grp", 1000);
+    new fail_prio = SUI_SetGroupPriority(g_NpcId, "nonexistent_grp", 1);
+    new fail_evict = SUI_SetGroupEvictable(g_NpcId, "nonexistent_grp", true);
+    if (fail_idle != 0 || fail_prio != 0 || fail_evict != 0)
+    {
+        printf("[GM] Error: Direct setter failure contract violated on non-existent group: idle=%d prio=%d evict=%d",
+            fail_idle, fail_prio, fail_evict);
+        SendRconCommand("exit");
+        return 1;
+    }
 
     // TEST U1: Visible Created Group Cleanup
     print("\n[TEST-U1] Visible Created Group Cleanup (hide then destroy)...");

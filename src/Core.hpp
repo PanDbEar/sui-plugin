@@ -106,7 +106,7 @@ public:
     static bool ShowGroup(int playerId, const std::string& groupName);
     static bool HideGroup(int playerId, const std::string& groupName);
     
-    static void SetIdleTimeout(int playerId, const std::string& groupName, uint32_t timeoutMs);
+    static bool SetIdleTimeout(int playerId, const std::string& groupName, uint32_t timeoutMs);
     
     static bool CleanupPlayer(int playerId);
     static bool ResetPlayer(int playerId);
@@ -119,7 +119,7 @@ public:
     static bool RecalculateActiveTextDrawCount(PlayerContext& ctx);
     static bool SetMaxTextDraws(int playerId, uint32_t maxCount);
     static bool SetEvictionThreshold(int playerId, uint32_t threshold);
-    static void SetGroupPriority(int playerId, const std::string& groupName, uint8_t priority);
+    static bool SetGroupPriority(int playerId, const std::string& groupName, uint8_t priority);
     static std::vector<EvictionCandidate> CollectEligibleEvictionCandidates(const PlayerContext& ctx);
     static bool EvictCandidate(PlayerContext& ctx, const EvictionCandidate& candidate);
     static bool EnsureCapacity(PlayerContext& ctx, uint32_t requiredSize);
@@ -131,7 +131,7 @@ public:
     static bool IsGroupVisible(int playerId, const std::string& groupName);
     static void PrintPlayerState(int playerId);
 
-    static void SetGroupEvictable(int playerId, const std::string& groupName, bool enabled);
+    static bool SetGroupEvictable(int playerId, const std::string& groupName, bool enabled);
     static bool IsGroupEvictable(int playerId, const std::string& groupName);
 
     static bool TouchGroup(int playerId, const std::string& groupName);
