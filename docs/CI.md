@@ -1,6 +1,6 @@
 # SUI — Continuous Integration & Test Automation Architecture
 
-**Document Version:** 1.0.0 (Phase 14 Baseline)  
+**Document Version:** 1.0.0 (v1.0.0 Release Baseline)  
 **Author:** SUI Engineering  
 **Scope:** Automated testing gates, multi-tier evidence layers, toolchain provenance, and local replication.
 
@@ -10,28 +10,38 @@
 
 To guarantee long-term regression safety without weakening platform constraints (Linux x86 ELF32, `-m32`), SUI establishes a reproducible, repository-owned test automation framework and continuous integration pipeline.
 
-The CI architecture strictly separates verification into **Three Distinct Evidence Layers**, preventing the conflation of static syntax checks, binary build verification, and live server runtime regressions.
+The CI architecture strictly separates verification into **Four Distinct Evidence Layers**, preventing the conflation of static syntax checks, binary build verification, live server runtime regressions, and release packaging mechanics.
 
-```
+```text
 +-------------------------------------------------------------------------+
-|                       SUI THREE-LAYER EVIDENCE GATES                     |
+|                        SUI FOUR-LAYER EVIDENCE GATES                    |
 +-------------------------------------------------------------------------+
 |                                                                         |
 |  [ LAYER A ] Static Repository Contract Gates                           |
 |  ├── API Surface Checker (tests/api_contract/check_api_surface.py)      |
+|  │   └── 7 / 7 PASS (20 C++ Natives, 1 Stock Helper, 100% Synced)       |
 |  └── Repo Surface Checker (tests/repo_contract/check_source_surface.py) |
+|      └── 6 / 6 PASS (6 Canonical Files, 3 C++ Units, 0 Leaks)           |
 |                                                                         |
 |  [ LAYER B ] Build & Compilation Contract Gates                         |
 |  ├── 32-bit Multilib Shared Object Build (gcc -m32, Release)            |
-|  ├── Binary Architecture Verification (ELF32, Intel 80386)              |
-|  ├── Canonical C Plugin Export Audit (exact 6 exports)                  |
+|  ├── Binary Architecture Verification (ELF32, Intel 80386, DYN)         |
+|  ├── Canonical C Plugin Export Audit (All 6 Canonical Exports Present)  |
 |  └── Pawn Fixture Compilation Audit (scripts/compile_pawn.py --check)   |
+|      └── 23 / 23 PASS (0 errors, 0 warnings under -w239)                |
 |                                                                         |
 |  [ LAYER C ] Live Runtime Regression Gates                              |
 |  ├── Headless SA-MP 0.3.7-R2 Linux Dedicated Server (samp03svr)         |
 |  ├── Dynamic Fixture Deployment (gamemodes/ & filterscripts/)           |
-|  └── 11 Permanent Regression Test Suites (scripts/run_regression.py)    |
-|      └── 151 / 151 PASS (100% Assertion Baseline)                       |
+|  └── 13 Permanent Regression Test Suites (scripts/run_regression.py)    |
+|      └── 179 / 179 PASS (100% Runtime Assertion Baseline)               |
+|                                                                         |
+|  [ LAYER D ] Release Packaging & Package-Only Deployment Gates          |
+|  ├── Deterministic Packager (scripts/package_release.py)                |
+|  ├── Release Contract Checker (tests/release_contract/check_release)   |
+|  │   └── 12 / 12 PASS (PK1–PK12 Distribution Integrity Verification)    |
+|  └── Package Deployment Smoke Test (tests/release_contract/run_smoke)   |
+|      └── Isolated Server Boot with Packaged .so + sui.inc Only (PASS)   |
 |                                                                         |
 +-------------------------------------------------------------------------+
 ```
@@ -50,6 +60,7 @@ SA-MP server binaries are not stored in this repository and are acquired externa
 | :--- | :--- | :--- | :--- | :--- |
 | **`actions/checkout`** | GitHub Actions | `11bd71901bbe5b1630ceea73d27597364c9af683` (v4.2.2) | Commit SHA | MIT |
 | **`actions/setup-python`** | GitHub Actions | `42375524e23c412d93fb67b49958b491fce71c38` (v5.4.0) | Commit SHA | MIT |
+| **`actions/upload-artifact`** | GitHub Actions | `ea165f8d65b6e75b540449e92b4886f43607fa02` (v4.6.1) | Commit SHA | MIT |
 | **`samp-plugin-sdk`** | Tracked Git Submodule (`lib/samp-plugin-sdk`) | Commit `a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5` | Submodule Commit SHA | zlib/libpng |
 | **Pawn Compiler (`pawncc`)** | `pawn-lang/compiler` Linux release asset | Release `v3.10.10` | SHA-256 `9bbb1df6e933318fce1fa61951e4196b70613c637a5a1d4c96937e147c18468d` | zlib/libpng |
 | **`pawn-stdlib`** | `pawn-lang/pawn-stdlib` | Commit `e96507d9a6ddaae5bb0f3ec31479ba805aeff964` | Commit SHA | Apache-2.0 |
@@ -63,29 +74,30 @@ SA-MP server binaries are not stored in this repository and are acquired externa
 
 ---
 
-## 3. The Three Evidence Layers
+## 3. The Four Evidence Layers
 
 ### Layer A — Static Repository Contract
 Layer A verifies that the repository source tree, header declarations, public Pawn include files, and documentation remain 100% truthful and synchronized.
-- **`tests/api_contract/check_api_surface.py`**:
-  - `AP1`: Exactly 19 public natives declared and registered.
+- **`tests/api_contract/check_api_surface.py` (7 / 7 PASS)**:
+  - `AP1`: Exactly 20 public natives declared and registered.
   - `AP2`: 100% name set equality between `pawn/sui.inc` and `src/main.cpp`.
   - `AP3`: Stock helper `SUI_RegisterGroup` distinction from C++ natives.
   - `AP4`: Parameter count alignment between Pawn declarations and `Utils::CheckParams`.
   - `AP5`: C++ handler declaration and definition parity (`Natives.hpp` / `Natives.cpp`).
   - `AP6`: Complete documentation coverage in `docs/API_REFERENCE.md`.
   - `AP7`: Priority constants and capacity defaults synchronization.
-- **`tests/repo_contract/check_source_surface.py`**:
-  - `RC1`: All `src/*.cpp` files listed in `CMakeLists.txt:SOURCES`.
+- **`tests/repo_contract/check_source_surface.py` (6 / 6 PASS)**:
+  - `RC1`: All `src/*.cpp` files listed in `CMakeLists.txt:SOURCES` (3 project translation units: `Core.cpp`, `Natives.cpp`, `main.cpp`).
   - `RC2`: Zero banned includes (`Component.hpp`, `Compat.hpp`, `<sdk.hpp>`).
-  - `RC3`: Directory `src/` contains exactly the canonical 6 files.
+  - `RC3`: Directory `src/` contains exactly the canonical 6 files (`Core.cpp`, `Core.hpp`, `main.cpp`, `Natives.cpp`, `Natives.hpp`, `Utils.hpp`).
   - `RC4`: All CMake source paths exist on disk.
   - `RC5`: Complete absence of orphaned component prototypes.
+  - `RC6`: Portable automation path contract (zero developer-specific path literals).
 
 ### Layer B — Build & Compilation Contract
 Layer B verifies that the plugin compiles cleanly under strict platform constraints and that all Pawn code compiles with zero errors and zero emitted warnings under the pinned CI warning policy (`-w239`).
 - **C++ Shared Library**:
-  - Compiled with `-m32` targeting Linux x86 (32-bit ELF, Intel 80386).
+  - Compiled with `-m32` targeting Linux x86 (32-bit ELF, Intel 80386, DYN shared object file).
   - Validated via `file` and `readelf -h`.
   - Dynamic export validation via `nm -D` asserting that all six canonical SA-MP plugin entry points are present:
     - `Supports`
@@ -96,7 +108,7 @@ Layer B verifies that the plugin compiles cleanly under strict platform constrai
     - `ProcessTick`
 - **Pawn Fixture Compilation**:
   - Executed via repository-owned tool `scripts/compile_pawn.py --check-only`.
-  - Verifies all 18 Pawn files (1 example + 17 test scripts).
+  - Verifies all 23 Pawn files (1 shipped example + 22 regression test fixtures).
   - Enforces `0 errors, 0 emitted warnings under the pinned CI warning policy`.
   - Note: Warning 239 (`literal array/string passed to a non-const parameter`) is intentionally suppressed via `-w239` because it originates from legacy SA-MP `SendRconCommand` non-const signature compatibility under `pawn-lang/compiler` v3.10.10. No broader warning classes are suppressed.
   - Immediately purges generated `.amx` binaries to preserve repository hygiene.
@@ -104,7 +116,7 @@ Layer B verifies that the plugin compiles cleanly under strict platform constrai
 ### Layer C — Live Runtime Regression
 Layer C verifies actual plugin behavior within a genuine 32-bit Linux SA-MP dedicated server (`samp03svr`).
 - **Orchestration**: Executed via repository-owned tool `scripts/run_regression.py`.
-- **Permanent Suites Tested**:
+- **Permanent Suites Tested (13 Suites, 179 Assertions)**:
   1. `reentrancy_regression`: 10 / 10 PASS (R1–R10)
   2. `amx_ownership`: 7 / 7 PASS (A1–A7)
   3. `native_validation`: 10 / 10 PASS (V1–V10)
@@ -116,7 +128,22 @@ Layer C verifies actual plugin behavior within a genuine 32-bit Linux SA-MP dedi
   9. `show_failure_lifecycle`: 10 / 10 PASS (F1–F10)
   10. `player_id_validation`: 14 / 14 PASS (PV1–PV14)
   11. `api_contract_runtime`: 10 / 10 PASS (AS1–AS10)
-- **Cumulative Assertion Requirement**: **151 / 151 PASS (100%)**.
+  12. `amx_unload_cleanup`: 14 / 14 PASS (U1–U14)
+  13. `callback_error_recovery`: 14 / 14 PASS (F1–F14)
+- **Cumulative Assertion Requirement**: **179 / 179 PASS (100%)**.
+
+### Layer D — Release Packaging & Deployment Verification
+Layer D verifies that the distributed prebuilt archives conform to the distribution specification and boot cleanly in an isolated downstream server environment without access to repository source code.
+- **Deterministic Packaging (`scripts/package_release.py`)**:
+  - Produces byte-reproducible `.tar.gz`, `.zip`, and `SHA256SUMS.txt` using `SOURCE_DATE_EPOCH`.
+  - Embeds mandatory `LICENSE`, documentation, include header, example, and `BUILD_INFO.txt`.
+- **Package Contract Audit (`tests/release_contract/check_release_package.py`)**:
+  - Validates all 12 distribution contracts (PK1–PK12 = 12 / 12 PASS): archive presence, file structure, ELF32 binary architecture, public header equality, checksum manifest integrity, permissions, and strict exclusion of internal files (`src/`, `tests/`, `.git/`, `.github/`).
+- **Package Deployment Smoke Test (`tests/release_contract/run_package_smoke.py`)**:
+  - Extracts the distribution archive into an isolated test environment without repository fallbacks.
+  - Compiles `tests/release_contract/package_smoke.pwn` using the extracted `sui.inc`.
+  - Boots headless SA-MP server loading the extracted `sui-plugin-legacy.so`.
+  - Asserts successful initialization, AMX native binding, and graceful server shutdown.
 
 ---
 
@@ -165,15 +192,36 @@ python3 scripts/compile_pawn.py \
    python3 scripts/run_regression.py --server-dir test-server
    ```
 
+### Running Layer D (Packaging & Smoke Verification)
+1. **Build Deterministic Package**:
+   ```bash
+   SOURCE_DATE_EPOCH=1700000000 python3 scripts/package_release.py \
+     --binary build/sui-plugin-legacy.so \
+     --version 1.0.0 \
+     --output-dir dist
+   ```
+2. **Verify Package Contract (PK1–PK12)**:
+   ```bash
+   python3 tests/release_contract/check_release_package.py \
+     --dist dist \
+     --version 1.0.0
+   ```
+3. **Run Package-Only Deployment Smoke Test**:
+   ```bash
+   python3 tests/release_contract/run_package_smoke.py \
+     --archive dist/sui-plugin-1.0.0-linux-x86.tar.gz
+   ```
+
 ---
 
 ## 5. GitHub Actions Continuous Integration
 
-The GitHub Actions workflow is defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). It triggers automatically on all pushes and pull requests across all branches, executing all three evidence layers in order:
+The GitHub Actions workflow is defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). It triggers automatically on all pushes and pull requests across all branches, executing all four evidence layers in order:
 
-1. **Layer A**: Runs static contract checkers against Python 3.11.
-2. **Layer B**: Installs `gcc-multilib`, builds 32-bit Release plugin, asserts ELF32 architecture and 6 exports, downloads Pawn compiler, and verifies 18 / 18 Pawn compilation.
-3. **Layer C**: Automatically provisions SA-MP server via `setup_test_server.py`, deploys compiled test fixtures and `sui-plugin-legacy.so`, and executes all 11 suites via `run_regression.py`, asserting 151 / 151 passing assertions.
+1. **Layer A**: Runs static contract checkers (`check_api_surface.py`, `check_source_surface.py`) against Python 3.11.
+2. **Layer B**: Installs `gcc-multilib`, builds 32-bit Release plugin, asserts ELF32 architecture and canonical exports, downloads Pawn compiler, and verifies 23 / 23 Pawn compilation.
+3. **Layer C**: Automatically provisions SA-MP server via `setup_test_server.py`, deploys compiled test fixtures and `sui-plugin-legacy.so`, and executes all 13 suites via `run_regression.py`, asserting 179 / 179 passing assertions.
+4. **Layer D**: Packages deterministic distribution archives, verifies PK1–PK12 distribution contracts, and executes isolated deployment smoke test.
 
 ---
 
@@ -183,20 +231,23 @@ The CI pipeline is authoritatively verified on GitHub-hosted infrastructure:
 
 - **Repository:** `PanDbEar/sui-plugin`
 - **Workflow:** `SUI Continuous Integration` (`.github/workflows/ci.yml`)
-- **Run ID:** `34941878535`
-- **Job ID:** `104292210079`
-- **Verified Commit SHA:** `8ec9ed10e5f0819f1e8f8346f4a00392ca0392d6`
+- **Run ID:** `35050496591`
+- **Job ID:** `104649586202`
+- **Verified Commit SHA:** `058540009ec941ae22aaf04b3e7b5f6f7837fde0`
 - **Runner Environment:** `ubuntu-24.04` (GitHub Actions hosted runner)
 - **Workflow Conclusion:** `success`
 - **SDK Submodule Pin:** Verified `a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5`
 - **Layer A (Static Contracts):**
-  - API Surface Contract: 7 / 7 PASS
-  - Source Surface Contract: 5 / 5 PASS
+  - API Surface Contract: 7 / 7 PASS (20 C++ natives, 1 stock helper)
+  - Source Surface Contract: 6 / 6 PASS (6 canonical files, 3 C++ translation units, 0 leaks)
 - **Layer B (Build & Compilation):**
   - Architecture: ELF32, Intel 80386, DYN shared object file
-  - Canonical Exports: 6 / 6 present (`Supports`, `Load`, `Unload`, `AmxLoad`, `AmxUnload`, `ProcessTick`)
-  - Pawn Compilation: 18 / 18 PASS (0 errors, 0 emitted warnings under `-w239`)
+  - Canonical Exports: All 6 present (`Supports`, `Load`, `Unload`, `AmxLoad`, `AmxUnload`, `ProcessTick`)
+  - Pawn Compilation: 23 / 23 PASS (0 errors, 0 emitted warnings under `-w239`)
 - **Layer C (Live Runtime Regression):**
-  - All 11 permanent suites executed on headless SA-MP 0.3.7-R2 server
-  - Assertion Total: 151 / 151 PASS (100% assertion coverage, zero regressions)
-- **Cleanup:** `pkill -9 -f samp03svr` and `rm -rf test-server` executed cleanly in `if: always()` step.
+  - All 13 permanent suites executed on headless SA-MP 0.3.7-R2 server
+  - Assertion Total: 179 / 179 PASS (100% assertion coverage, zero regressions)
+- **Layer D (Release Packaging & Smoke):**
+  - Release Package Contract: 12 / 12 PASS (PK1–PK12)
+  - Package Deployment Smoke: PASS (isolated boundary boot and shutdown)
+- **Cleanup:** `pkill -9 -f samp03svr` and `rm -rf test-server test-server-smoke` executed cleanly in `if: always()` step.

@@ -44,6 +44,10 @@ PLUGIN_EXPORT unsigned int PLUGIN_CALL Supports()
     return SUPPORTS_VERSION | SUPPORTS_AMX_NATIVES | SUPPORTS_PROCESS_TICK;
 }
 
+#ifndef SUI_VERSION
+#define SUI_VERSION "1.0.0"
+#endif
+
 PLUGIN_EXPORT bool PLUGIN_CALL Load(void **ppData)
 {
     pAMXFunctions = ppData[PLUGIN_DATA_AMX_EXPORTS];
@@ -53,7 +57,7 @@ PLUGIN_EXPORT bool PLUGIN_CALL Load(void **ppData)
     logprintf("========================================");
     logprintf("Smart UI Virtualizer Loaded");
     logprintf("Mode    : Legacy Factory");
-    logprintf("Version : 1.0.0");
+    logprintf("Version : " SUI_VERSION);
     logprintf("Author  : Pandbear");
     logprintf("========================================");
     logprintf(" ");

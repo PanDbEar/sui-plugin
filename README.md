@@ -2,8 +2,8 @@
 
 [![C++ Standard](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.wikipedia.org/wiki/C%2B%2B20)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20x86%20(32--bit)-orange.svg)](docs/BUILD.md)
-[![CI](https://img.shields.io/badge/CI-Automated%20Gates%20(3--Layer)-brightgreen.svg)](docs/CI.md)
-[![Status](https://img.shields.io/badge/Status-Pre--Release%20Baseline-lightgrey.svg)](docs/KNOWN_ISSUES.md)
+[![CI](https://img.shields.io/badge/CI-Automated%20Gates%20(4--Layer)-brightgreen.svg)](docs/CI.md)
+[![Status](https://img.shields.io/badge/Status-Release%20Ready%20(v1.0.0--RC)-brightgreen.svg)](docs/KNOWN_ISSUES.md)
 
 **SUI (Smart UI Virtualizer)** is an intelligent UI lifecycle manager and PlayerTextDraw virtualizer designed for SA-MP and open.mp legacy plugin environments.
 
@@ -191,6 +191,7 @@ public OnPlayerDisconnect(playerid, reason)
 | `SUI_IsGroupEvictable` | Check if group is eligible for eviction |
 | `SUI_PrintPlayerState` | Print debug snapshot of player state |
 | `SUI_SetDebug` | Enable / disable verbose debug logs |
+| `SUI_CleanupOwnerGroups` | Safely execute lifecycle cleanup and purge all groups owned by calling AMX before script unload |
 
 For complete signatures and parameter details, see [API Reference](docs/API_REFERENCE.md).  
 For the engineering synchronization ledger, see [API Inventory](docs/API_INVENTORY.md).
@@ -215,7 +216,7 @@ sui-plugin/
 │   ├── API_INVENTORY.md          # Engineering synchronization ledger
 │   ├── API_REFERENCE.md          # Comprehensive Pawn API reference
 │   ├── ARCHITECTURE_AUDIT.md     # Phase 0 architectural & runtime audit
-│   ├── KNOWN_ISSUES.md           # Authoritative issue tracker (SUI-001..SUI-015)
+│   ├── KNOWN_ISSUES.md           # Authoritative issue tracker (SUI-001..SUI-018)
 │   └── BUILD.md                  # Compilation & installation guide
 ├── lib/
 │   └── samp-plugin-sdk/          # SA-MP legacy plugin SDK (contains nested .git)
@@ -264,12 +265,14 @@ For SA-MP 0.3.7-R2 Linux x86 servers:
 
 ## Engineering Status & Roadmap
 
-This project is currently verified across **11 permanent runtime test suites (151 assertions, 100% PASS)**:
+This project is currently verified across **13 permanent runtime test suites (179 assertions, 100% PASS)** across 4 verification layers:
 
 - [x] **Phase 0 / 0.1**: Truthful baseline, repository hygiene, synchronized API inventory, issue ledger, build documentation.
 - [x] **Phase 1**: Critical runtime stability — resolve re-entrancy / iterator invalidation (SUI-001), AMX ownership (SUI-002), return code trap (SUI-006), and registration behavior (SUI-011).
 - [x] **Phase 2**: Capacity engine & validation — non-destructive eviction (SUI-007), overflow safety (SUI-004), automated test harness and CI (SUI-014).
 - [x] **Phase 3**: Platform & ecosystem — release packaging (SUI-015).
+- [x] **Phase 4**: Owner-AMX lifecycle cleanup — explicit pre-unload group cleanup (SUI-016).
+- [x] **Phase 5**: Callback error recovery — best-effort compensation & quarantine mitigation (SUI-018, classified `MITIGATED`).
 
 Review the test and CI architecture in [docs/CI.md](docs/CI.md) and active issue ledger in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
 

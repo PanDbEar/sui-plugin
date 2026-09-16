@@ -1,6 +1,6 @@
 # SUI Release & Distribution Specification (SUI-015)
 
-**Document Version:** 1.0.0 (Phase 15 Baseline)  
+**Document Version:** 1.0.0 (v1.0.0 Release Baseline)  
 **Target Platform:** SA-MP 0.3.7-R2 Legacy (Linux x86 / ELF32 / Intel 80386)  
 **Project License:** MIT License  
 
@@ -51,7 +51,7 @@ sui-plugin-<VERSION>/
 │   └── sui-plugin-legacy.so      # Validated ELF32 Intel 80386 shared object
 ├── pawno/
 │   └── include/
-│       └── sui.inc               # Public Pawn API include (19 natives + 1 stock helper)
+│       └── sui.inc               # Public Pawn API include (20 C++ natives + 1 Pawn stock helper)
 ├── examples/
 │   └── factory_login_example.pwn # Reference factory UI implementation
 ├── docs/

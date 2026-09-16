@@ -1,6 +1,6 @@
 # SUI — Public API & Symbol Inventory
 
-**Document Version:** 1.12.0 (Phase 12 Synchronized Baseline)  
+**Document Version:** 1.0.0 (v1.0.0 Release Baseline)  
 **Type:** Engineering Synchronization Ledger  
 **Primary Source Evidence:** `src/main.cpp`, `src/Natives.cpp`, `src/Natives.hpp`, `src/Core.hpp`, `pawn/sui.inc`
 

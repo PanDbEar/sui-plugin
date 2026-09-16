@@ -2,7 +2,7 @@
 """
 SUI Repository Runtime Regression Test Runner (SUI-014)
 
-Drives live execution of all 11 permanent test suites inside a headless
+Drives live execution of all 13 permanent test suites inside a headless
 32-bit Linux SA-MP dedicated server (samp03svr):
 1.  reentrancy_regression       (10 / 10 PASS)
 2.  amx_ownership               ( 7 /  7 PASS)

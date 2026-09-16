@@ -1,6 +1,6 @@
 # SUI — Known Issues Ledger
 
-**Document Version:** 1.0.0 (Phase 0.1 Baseline)  
+**Document Version:** 1.0.0 (v1.0.0 Release Baseline)  
 **Type:** Authoritative Engineering Issue Tracker  
 **Policy:** Do NOT fix runtime issues in Phase 0 / 0.1. All runtime issues must be addressed in subsequent planned phases.
 

@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-16
+
 ### Fixed
 - **SUI-018**: In-flight callback execution error leaves partial external UI resources in indeterminate state. Status: `MITIGATED — callback-failure quarantine and best-effort compensation implemented; raw untracked host resources remain outside SUI ownership`.
   - Implemented internal group recovery quarantine (`SUIGroup::recoveryDestroyRequired = true`) and compensating destroy transaction (`SUICore::AttemptCompensatingDestroy`).

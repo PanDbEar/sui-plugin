@@ -2,9 +2,9 @@
 """
 SUI Repository Pawn Compiler & Fixture Verification Tool (SUI-014)
 
-Provides reproducible, repository-owned compilation of all 18 Pawn scripts:
+Provides reproducible, repository-owned compilation of all 23 Pawn scripts:
 - 1 shipped example: examples/factory_login_example.pwn
-- 17 regression test fixtures in tests/
+- 22 regression test fixtures in tests/
 
 Features:
 - Automated discovery of all .pwn fixtures
@@ -31,7 +31,7 @@ def find_repo_root():
     raise RuntimeError("Repository root not found")
 
 def discover_pwn_files(root: Path):
-    """Finds all 18 tracked .pwn files in deterministic order."""
+    """Finds all 23 tracked .pwn files in deterministic order."""
     all_files = sorted(list(root.glob("examples/**/*.pwn")) + list(root.glob("tests/**/*.pwn")))
     # Normalize paths
     return [f for f in all_files if f.is_file()]

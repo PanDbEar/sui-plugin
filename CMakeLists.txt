@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(sui-plugin-legacy C CXX)
+project(sui-plugin-legacy VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,6 +31,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     LINUX
     HAVE_STDINT_H
+    SUI_VERSION="${PROJECT_VERSION}"
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES

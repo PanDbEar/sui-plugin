@@ -1645,6 +1645,15 @@ public RunIdentityTests()
     }
 
     // -------------------------------------------------------------
+    // Schedule ID4 deferred timer test in fresh server tick
+    // -------------------------------------------------------------
+    SetTimer("Setup_Test_ID4", 100, false);
+}
+
+forward Setup_Test_ID4();
+public Setup_Test_ID4()
+{
+    // -------------------------------------------------------------
     // ID4: ProcessTick Same-Name Replacement (Deferred Timer)
     // -------------------------------------------------------------
     print("\n[TEST-ID4] Setting up ProcessTick Same-Name Replacement (short timeout)...");
