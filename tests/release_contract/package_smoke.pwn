@@ -34,6 +34,10 @@ public SmokeHide(playerid)
     return 1;
 }
 
+main()
+{
+}
+
 public OnGameModeInit()
 {
     print("\n========================================================");

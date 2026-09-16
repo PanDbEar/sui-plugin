@@ -239,8 +239,7 @@ def main():
     print(" SERVER LOG OUTPUT:")
     print("--------------------------------------------------")
     for line in log_text.splitlines():
-        if any(tok in line for tok in ["Smart UI", "Mode", "Version", "SMOKE", "Loaded."]):
-            print(f"  {line}")
+        print(f"  {line}")
 
     # Check assertions
     has_loaded = "Smart UI Virtualizer Loaded" in log_text or "Loaded." in log_text
