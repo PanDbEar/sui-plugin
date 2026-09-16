@@ -229,12 +229,28 @@ bool SUICore::CleanupOwnerGroups(AMX* ownerAmx)
         }
 
         // UNCREATED GROUP (Section 16):
-        // For isCreated == false: no hide callback, no destroy callback.
-        // Leave it for final terminal metadata sweep. No capacity subtraction.
+        // For clean isCreated == false: no hide callback, no destroy callback.
+        // For recovery-required uncreated groups (SUI-018): attempt compensating destroy.
         if (!group->isCreated)
         {
-            Debug("[SUI-DEBUG] CleanupOwnerGroups snapshot skipped uncreated group playerid=%d group=%s",
-                snap.playerId, snap.groupName.c_str());
+            if (group->recoveryDestroyRequired)
+            {
+                Debug("[SUI-DEBUG] CleanupOwnerGroups attempting compensating destroy for quarantined group playerid=%d group=%s",
+                    snap.playerId, snap.groupName.c_str());
+
+                bool ok = AttemptCompensatingDestroy(snap.playerId, snap.groupName, snap.instanceId);
+                if (!ok)
+                {
+                    Debug("[SUI-DEBUG] CleanupOwnerGroups compensating destroy failed playerid=%d group=%s",
+                        snap.playerId, snap.groupName.c_str());
+                    allCallbacksSucceeded = false;
+                }
+            }
+            else
+            {
+                Debug("[SUI-DEBUG] CleanupOwnerGroups snapshot skipped uncreated group playerid=%d group=%s",
+                    snap.playerId, snap.groupName.c_str());
+            }
             continue;
         }
 
@@ -674,6 +690,13 @@ bool SUICore::ShowGroup(int playerId, const std::string& groupName)
         return false;
     }
 
+    if (group.recoveryDestroyRequired)
+    {
+        Debug("ShowGroup rejected: group %s is quarantined pending recovery destroy playerid=%d instance=%llu",
+            groupName.c_str(), playerId, static_cast<unsigned long long>(group.instanceId));
+        return false;
+    }
+
     uint64_t instanceId = group.instanceId;
     bool wasCreatedBeforeShow = group.isCreated;
 
@@ -773,6 +796,7 @@ bool SUICore::ShowGroup(int playerId, const std::string& groupName)
             if (TryAddActiveTextDrawCount(*postCtx, authorizedSize))
             {
                 postGroup->isCreated = true;
+                postGroup->recoveryDestroyRequired = false;
                 Debug("Create callback success playerid=%d group=%s instance=%llu activeTD=%u",
                     playerId,
                     groupName.c_str(),
@@ -790,6 +814,8 @@ bool SUICore::ShowGroup(int playerId, const std::string& groupName)
                     authorizedSize
                 );
                 postGroup->isExecutingCallback = false;
+                postGroup->recoveryDestroyRequired = true;
+                AttemptCompensatingDestroy(playerId, groupName, instanceId);
                 return false;
             }
         }
@@ -801,6 +827,8 @@ bool SUICore::ShowGroup(int playerId, const std::string& groupName)
                 cbCreate.c_str()
             );
             postGroup->isExecutingCallback = false;
+            postGroup->recoveryDestroyRequired = true;
+            AttemptCompensatingDestroy(playerId, groupName, instanceId);
             return false;
         }
     }
@@ -1079,12 +1107,13 @@ bool SUICore::CleanupPlayer(int playerId)
         ctx.activeTextDrawCount
     );
 
-    // Snapshot created group names and instance IDs to prevent iterator invalidation across callbacks
+    // Snapshot created group names and uncreated recovery group names
     struct GroupItem {
         std::string name;
         uint64_t instanceId;
     };
     std::vector<GroupItem> groupItems;
+    std::vector<GroupItem> recoveryItems;
     groupItems.reserve(ctx.groups.size());
     for (const auto& [groupName, group] : ctx.groups)
     {
@@ -1092,12 +1121,16 @@ bool SUICore::CleanupPlayer(int playerId)
         {
             groupItems.push_back({groupName, group.instanceId});
         }
+        else if (group.recoveryDestroyRequired)
+        {
+            recoveryItems.push_back({groupName, group.instanceId});
+        }
     }
 
-    // Direct erasure of uncreated groups without callbacks (T10)
+    // Direct erasure of clean uncreated groups without callbacks (T10)
     for (auto it = ctx.groups.begin(); it != ctx.groups.end(); )
     {
-        if (!it->second.isCreated)
+        if (!it->second.isCreated && !it->second.recoveryDestroyRequired)
         {
             it = ctx.groups.erase(it);
         }
@@ -1129,6 +1162,37 @@ bool SUICore::CleanupPlayer(int playerId)
         {
             allDestroyedSuccessfully = false;
             Debug("CleanupPlayer warning: failed to destroy group playerid=%d group=%s instance=%llu",
+                playerId,
+                item.name.c_str(),
+                static_cast<unsigned long long>(item.instanceId)
+            );
+        }
+        else
+        {
+            currentCtx->groups.erase(item.name);
+        }
+    }
+
+    for (const auto& item : recoveryItems)
+    {
+        auto* currentCtx = GetPlayerContext(playerId);
+        if (!currentCtx)
+        {
+            allDestroyedSuccessfully = false;
+            break;
+        }
+
+        auto* group = GetPlayerGroupIfInstance(playerId, item.name, item.instanceId);
+        if (!group || group->isCreated || !group->recoveryDestroyRequired)
+        {
+            continue;
+        }
+
+        bool ok = AttemptCompensatingDestroy(playerId, item.name, item.instanceId);
+        if (!ok)
+        {
+            allDestroyedSuccessfully = false;
+            Debug("CleanupPlayer warning: failed compensating destroy playerid=%d group=%s instance=%llu",
                 playerId,
                 item.name.c_str(),
                 static_cast<unsigned long long>(item.instanceId)
@@ -1188,12 +1252,13 @@ bool SUICore::ResetPlayer(int playerId)
         ctx.activeTextDrawCount
     );
 
-    // Snapshot created group names and instance IDs to prevent iterator invalidation across callbacks
+    // Snapshot created group names and uncreated recovery group names
     struct GroupItem {
         std::string name;
         uint64_t instanceId;
     };
     std::vector<GroupItem> groupItems;
+    std::vector<GroupItem> recoveryItems;
     groupItems.reserve(ctx.groups.size());
     for (const auto& [groupName, group] : ctx.groups)
     {
@@ -1201,12 +1266,16 @@ bool SUICore::ResetPlayer(int playerId)
         {
             groupItems.push_back({groupName, group.instanceId});
         }
+        else if (group.recoveryDestroyRequired)
+        {
+            recoveryItems.push_back({groupName, group.instanceId});
+        }
     }
 
-    // Direct erasure of uncreated groups without callbacks (T10)
+    // Direct erasure of clean uncreated groups without callbacks (T10)
     for (auto it = ctx.groups.begin(); it != ctx.groups.end(); )
     {
-        if (!it->second.isCreated)
+        if (!it->second.isCreated && !it->second.recoveryDestroyRequired)
         {
             it = ctx.groups.erase(it);
         }
@@ -1234,6 +1303,35 @@ bool SUICore::ResetPlayer(int playerId)
         if (!ok)
         {
             Debug("ResetPlayer warning: failed to destroy group playerid=%d group=%s instance=%llu",
+                playerId,
+                item.name.c_str(),
+                static_cast<unsigned long long>(item.instanceId)
+            );
+        }
+        else
+        {
+            currentCtx->groups.erase(item.name);
+        }
+    }
+
+    for (const auto& item : recoveryItems)
+    {
+        auto* currentCtx = GetPlayerContext(playerId);
+        if (!currentCtx)
+        {
+            break;
+        }
+
+        auto* group = GetPlayerGroupIfInstance(playerId, item.name, item.instanceId);
+        if (!group || group->isCreated || !group->recoveryDestroyRequired)
+        {
+            continue;
+        }
+
+        bool ok = AttemptCompensatingDestroy(playerId, item.name, item.instanceId);
+        if (!ok)
+        {
+            Debug("ResetPlayer warning: failed compensating destroy playerid=%d group=%s instance=%llu",
                 playerId,
                 item.name.c_str(),
                 static_cast<unsigned long long>(item.instanceId)
@@ -1545,6 +1643,7 @@ void SUICore::MarkGroupDestroyed(PlayerContext& ctx, SUIGroup& group)
     group.isCreated = false;
     group.isVisible = false;
     group.hiddenSinceTick = 0;
+    group.recoveryDestroyRequired = false;
 
     SubtractActiveTextDrawCount(ctx, group.estimatedSize);
 }
@@ -1841,6 +1940,16 @@ bool SUICore::DestroyGroupInternal(PlayerContext& ctx, SUIGroup& group, const st
 
     if (!group.isCreated)
     {
+        if (group.recoveryDestroyRequired)
+        {
+            Debug("DestroyGroupInternal retrying recovery destroy for uncreated quarantined group playerid=%d group=%s instance=%llu",
+                playerId,
+                groupName.c_str(),
+                static_cast<unsigned long long>(instanceId)
+            );
+            return AttemptCompensatingDestroy(playerId, groupName, instanceId);
+        }
+
         Debug("DestroyGroupInternal skipped: not created playerid=%d group=%s instance=%llu",
             playerId,
             groupName.c_str(),
@@ -1953,6 +2062,76 @@ bool SUICore::DestroyGroupInternal(PlayerContext& ctx, SUIGroup& group, const st
     );
 
     return true;
+}
+
+bool SUICore::AttemptCompensatingDestroy(int playerId, const std::string& groupName, uint64_t instanceId)
+{
+    Debug("AttemptCompensatingDestroy started playerid=%d group=%s instance=%llu",
+        playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
+
+    auto* group = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
+    if (!group)
+    {
+        Debug("AttemptCompensatingDestroy aborted: group not found or instance mismatch playerid=%d group=%s instance=%llu",
+            playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
+        return false;
+    }
+
+    if (group->isCreated)
+    {
+        Debug("AttemptCompensatingDestroy rejected: group is already created playerid=%d group=%s",
+            playerId, groupName.c_str());
+        return false;
+    }
+
+    if (group->isExecutingCallback)
+    {
+        Debug("AttemptCompensatingDestroy blocked: callback recursion playerid=%d group=%s instance=%llu",
+            playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
+        return false;
+    }
+
+    AMX* ownerAmx = group->ownerAmx;
+    if (!ownerAmx || !IsAmxActive(ownerAmx))
+    {
+        Debug("AttemptCompensatingDestroy aborted: owner amx null or inactive playerid=%d group=%s",
+            playerId, groupName.c_str());
+        return false;
+    }
+
+    std::string cbDestroy = group->cbDestroy;
+    group->isExecutingCallback = true;
+
+    Debug("AttemptCompensatingDestroy calling callback playerid=%d group=%s instance=%llu callback=%s",
+        playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId), cbDestroy.c_str());
+
+    PawnCallResult destroyRes = CallPawnFunction(ownerAmx, playerId, cbDestroy);
+
+    auto* postGroup = GetPlayerGroupIfInstance(playerId, groupName, instanceId);
+    if (postGroup)
+    {
+        postGroup->isExecutingCallback = false;
+        if (destroyRes.Success())
+        {
+            postGroup->recoveryDestroyRequired = false;
+            Debug("AttemptCompensatingDestroy success playerid=%d group=%s instance=%llu",
+                playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
+            return true;
+        }
+        else
+        {
+            postGroup->recoveryDestroyRequired = true;
+            Debug("AttemptCompensatingDestroy failed: callback error amxErr=%d playerid=%d group=%s instance=%llu",
+                destroyRes.amxError, playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
+            return false;
+        }
+    }
+    else
+    {
+        Debug("AttemptCompensatingDestroy: group removed or replaced during callback playerid=%d group=%s old=%llu",
+            playerId, groupName.c_str(), static_cast<unsigned long long>(instanceId));
+        return destroyRes.Success();
+    }
 }
 
 bool SUICore::IsGroupCreated(int playerId, const std::string& groupName)

@@ -20,8 +20,9 @@ This document defines the authoritative configuration, script dependencies, fixt
 | **player_id_validation** | `player_id_validation` | *(none)* | *(none)* | 14 | 14 / 14 PASS | Yes |
 | **api_contract_runtime** | `api_contract_runtime` | *(none)* | *(none)* | 10 | 10 / 10 PASS | Yes |
 | **amx_unload_cleanup** | `owner_cleanup_gamemode` | `owner_cleanup_filterscript` | *(none)* | 14 | 14 / 14 PASS | Yes |
+| **callback_error_recovery** | `callback_error_gamemode` | `callback_error_filterscript` | *(none)* | 12 | 12 / 12 PASS | Yes |
 
-**Total Permanent Suite Pass Rate:** **165 / 165 PASS (100%)**
+**Total Permanent Suite Pass Rate:** **177 / 177 PASS (100%)**
 
 ---
 
@@ -163,6 +164,24 @@ This document defines the authoritative configuration, script dependencies, fixt
   14. Active AMX Lifetime: Read-only SUI queries execute successfully following `SUI_CleanupOwnerGroups` inside `OnFilterScriptExit`, proving AMX remains registered in `activeAmxInstances` until host `AmxUnload`.
 - **Assertions:** U1–U14 (14 tests)
 - **Exit Behavior:** Server automatically terminates via RCON upon completing U8 final verification.
+
+### 13. callback_error_recovery
+- **Target Issue:** SUI-018 (In-flight callback execution error recovery, quarantine, and compensating destroy)
+- **Gamemode:** `tests/callback_error_recovery/callback_error_gamemode.pwn`
+- **Filterscript:** `tests/callback_error_recovery/callback_error_filterscript.pwn`
+- **Key Invariants:**
+  1. Failed create produces recovery quarantine (`recoveryDestroyRequired = true`); group is uncreated; zero capacity debited.
+  2. Immediate compensating destroy is invoked upon create failure; cooperative user callback cleanup resolves quarantine.
+  3. Failed compensating destroy retains quarantine; repeated `ShowGroup` calls are blocked without re-executing create callback.
+  4. Manual `SUI_DestroyGroup` retries compensation and clears quarantine upon success.
+  5. `SUI_CleanupOwnerGroups` retries compensation for quarantined uncreated groups before terminal metadata purge.
+  6. `SUI_CleanupPlayer` executes terminal compensation before erasing player context.
+  7. `SUI_ResetPlayer` retries compensation; if compensation fails, group is preserved in quarantined state and reset returns 0.
+  8. Instance replacement / ABA protection ensures stale callback returns or re-registrations cannot corrupt new instances.
+  9. Cross-AMX isolation ensures failure quarantine in one AMX does not affect healthy groups in another AMX.
+  10. Real PlayerTextDraw handle reuse demonstrates exact handle reuse across repeated failure/recovery cycles (zero slot creep).
+- **Assertions:** F1–F12 (12 tests)
+- **Exit Behavior:** Server automatically terminates via RCON upon completing F12.
 
 ---
 

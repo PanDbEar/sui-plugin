@@ -16,8 +16,9 @@ Drives live execution of all 11 permanent test suites inside a headless
 10. player_id_validation        (14 / 14 PASS)
 11. api_contract_runtime        (10 / 10 PASS)
 12. amx_unload_cleanup          (14 / 14 PASS)
+13. callback_error_recovery      (12 / 12 PASS)
 
-Total: 165 / 165 PASS across 12 permanent suites.
+Total: 177 / 177 PASS across 13 permanent suites.
 """
 
 import sys
@@ -42,6 +43,7 @@ SUITES = [
     ("player_id_validation", "player_id_validation", "", 14, r"ALL PLAYER ID VALIDATION TESTS PASSED"),
     ("api_contract_runtime", "api_contract_runtime", "", 10, r"ALL STOCK HELPER CONTRACT TESTS PASSED"),
     ("amx_unload_cleanup", "owner_cleanup_gamemode", "owner_cleanup_filterscript", 14, r"ALL AMX UNLOAD CLEANUP TESTS PASSED"),
+    ("callback_error_recovery", "callback_error_gamemode", "callback_error_filterscript", 12, r"ALL CALLBACK ERROR RECOVERY TESTS PASSED"),
 ]
 
 def find_server_dir(explicit_dir: str = None):
@@ -177,7 +179,10 @@ def main():
 
             cfg = re.sub(r"^gamemode0\s+.*", f"gamemode0 {gm} 1", cfg, flags=re.MULTILINE)
             fs_line = f"filterscripts {fs}".strip()
-            cfg = re.sub(r"^#?\s*filterscripts.*", fs_line, cfg, flags=re.MULTILINE)
+            if re.search(r"^#?\s*filterscripts", cfg, flags=re.MULTILINE):
+                cfg = re.sub(r"^#?\s*filterscripts.*", fs_line, cfg, flags=re.MULTILINE)
+            else:
+                cfg += f"\n{fs_line}\n"
             cfg = re.sub(r"^rcon_password\s+.*", "rcon_password testpass", cfg, flags=re.MULTILINE)
             if re.search(r"^maxnpc\s+", cfg, flags=re.MULTILINE):
                 cfg = re.sub(r"^maxnpc\s+.*", "maxnpc 10", cfg, flags=re.MULTILINE)

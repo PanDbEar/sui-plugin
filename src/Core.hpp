@@ -33,6 +33,7 @@ struct SUIGroup {
     bool evictable = true;
 
     bool isExecutingCallback = false;
+    bool recoveryDestroyRequired = false;
 
     // Non-owning pointer to the AMX script instance that registered this group.
     // Lifecycle is managed by the host server; purged during AmxUnload.
@@ -135,6 +136,8 @@ public:
     static bool IsGroupEvictable(int playerId, const std::string& groupName);
 
     static bool TouchGroup(int playerId, const std::string& groupName);
+
+    static bool AttemptCompensatingDestroy(int playerId, const std::string& groupName, uint64_t instanceId);
 
     static PawnCallResult CallPawnFunction(AMX* ownerAmx, int playerId, const std::string& functionName);
 };

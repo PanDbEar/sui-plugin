@@ -158,10 +158,14 @@ def main():
         f"-o{output_amx}",
         f"-i{pkg_inc_dir}",
     ]
+    std_paths = []
     for std in args.stdlibs.split(","):
         std_p = (repo_root / std.strip()).resolve()
         if std_p.exists():
-            compile_cmd.append(f"-i{std_p}")
+            std_paths.append(std_p)
+    std_paths.sort(key=lambda p: 0 if "samp-stdlib" in p.name else 1)
+    for std_p in std_paths:
+        compile_cmd.append(f"-i{std_p}")
 
     compile_cmd.extend(["-d3", "-p:", "-w239"])
 

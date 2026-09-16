@@ -113,7 +113,7 @@ jobs:
           git clone https://github.com/pawn-lang/samp-stdlib.git tools/samp-stdlib
           git -C tools/samp-stdlib checkout 7b194986946f64e8c0a4d4223aafec704ffd6b88
 
-      - name: Layer B — Verify Pawn Fixture Compilation (21 / 21 Scripts)
+      - name: Layer B — Verify Pawn Fixture Compilation (23 / 23 Scripts)
         run: |
           set -euo pipefail
           python scripts/compile_pawn.py \
@@ -142,7 +142,7 @@ jobs:
           set -euo pipefail
           cp build/sui-plugin-legacy.so test-server/plugins/sui-plugin-legacy.so
 
-      - name: Layer C — Execute 12 Permanent Regression Suites (165 Assertions)
+      - name: Layer C — Execute 13 Permanent Regression Suites (177 Assertions)
         run: |
           set -euo pipefail
           python scripts/run_regression.py --server-dir test-server
