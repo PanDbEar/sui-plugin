@@ -163,7 +163,7 @@ def main():
         if std_p.exists():
             compile_cmd.append(f"-i{std_p}")
 
-    compile_cmd.extend(["-d3", "-O1", "-w239", "-;+", "-(+"])
+    compile_cmd.extend(["-d3", "-p:", "-w239"])
 
     # Prepare environment with LD_LIBRARY_PATH if needed for Linux pawncc
     proc_env = os.environ.copy()
