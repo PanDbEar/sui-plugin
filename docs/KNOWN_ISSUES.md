@@ -24,7 +24,7 @@
 | **SUI-012** | Low | Repo / Build | Orphaned open.mp component prototype and unused header | `FIXED — orphaned component architecture removed` | Phase 13 |
 | **SUI-013** | High | Repo / Git | Repository dependency / nested Git metadata handling | `RESOLVED` | Pre-Release |
 | **SUI-014** | Medium | QA / Tooling | Missing automated tests and CI | `FIXED — Reproducible repository automation and GitHub-hosted CI verified` | Phase 14 / 14.1 / 14.2 |
-| **SUI-015** | Medium | Build / Packaging | Release packaging not yet defined | `CONFIRMED` | Pre-Release |
+| **SUI-015** | Medium | Build / Packaging | Release packaging not yet defined | `FIXED — Deterministic release packaging and distribution contract verified` | Phase 15 |
 | **SUI-016** | Medium | Core / Resource Lifecycle | Owner-unload external UI resource cleanup limitation | `CONFIRMED` | Phase 5 |
 | **SUI-017** | High | Core / Lifecycle / Identity | Re-entrant group replacement / generation identity confusion | `FIXED — runtime regression verified` | Phase 6 |
 | **SUI-018** | Medium | Core / Resource Lifecycle | In-flight callback execution error leaves partial external UI resources in indeterminate state | `CONFIRMED` | Phase 8 |
@@ -255,11 +255,19 @@
 - **ID:** SUI-015
 - **Severity:** Medium
 - **Area:** Build / Packaging
-- **Status:** CONFIRMED
-- **Current behavior:** `CMakeLists.txt` lacks installation rules (`install()`) and packaging metadata.
-- **Risk:** Manual, error-prone artifact bundling for public release.
-- **Evidence:** `CMakeLists.txt` has no install target.
-- **Planned phase:** Pre-Release
+- **Status:** FIXED — Deterministic release packaging and distribution contract verified
+- **Fix Summary:**
+  - Standardized repository licensing under the MIT License with explicit author attribution (`Copyright (c) 2026 PanDbEar`) across root `LICENSE` and `README.md`.
+  - Created repository-owned packaging tool `scripts/package_release.py` generating deterministic, bit-for-bit reproducible release bundles (`.tar.gz` and `.zip`) and checksum manifests (`SHA256SUMS.txt`).
+  - Enforced deterministic packaging constraints: normalized file modes (`0755` for executables, `0644` for files), normalized timestamps (`SOURCE_DATE_EPOCH`), sorted lexical member order, zero path leakage, and deterministic gzip header encapsulation (`mtime=epoch`, `filename=""`).
+  - Packaged standardized distribution layout: root license, `plugins/sui-plugin-legacy.so`, `pawno/include/sui.inc`, `docs/API_REFERENCE.md`, and clean `BUILD_INFO.txt`.
+  - Implemented Layer D release structural checker `tests/release_contract/check_release_package.py` enforcing 12 structural contract checks (PK1–PK12).
+  - Implemented Layer D package deployment smoke test fixture `tests/release_contract/package_smoke.pwn` and isolated runner `tests/release_contract/run_package_smoke.py` verifying full callback lifecycle, textdraw capacity accounting, and clean exit without referencing repository source or build artifacts.
+  - Formally integrated Layer D into `.github/workflows/ci.yml` alongside Layers A, B, and C, proving release readiness on hosted GitHub Actions runners.
+  - Documented release procedure, package layout, integrity verification, and installation instructions in `docs/RELEASE.md` and `README.md`.
+- **Verification:** Verified 12/12 structural contract checks (PK1–PK12), deterministic bit-for-bit packaging reproducibility across separate runs, package deployment smoke test PASS on headless Linux SA-MP dedicated server (`samp03svr`), and complete end-to-end execution on hosted GitHub Actions CI (Run ID `35038810967`, commit `5531e45`, conclusion `success`).
+- **Evidence:** `LICENSE`, `scripts/package_release.py`, `tests/release_contract/check_release_package.py`, `tests/release_contract/package_smoke.pwn`, `tests/release_contract/run_package_smoke.py`, `.github/workflows/ci.yml`, `docs/RELEASE.md`, `README.md`.
+- **Planned phase:** Phase 15
 
 ---
 
