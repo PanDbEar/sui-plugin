@@ -25,7 +25,7 @@
 | **SUI-013** | High | Repo / Git | Repository dependency / nested Git metadata handling | `RESOLVED` | Pre-Release |
 | **SUI-014** | Medium | QA / Tooling | Missing automated tests and CI | `FIXED — Reproducible repository automation and GitHub-hosted CI verified` | Phase 14 / 14.1 / 14.2 |
 | **SUI-015** | Medium | Build / Packaging | Release packaging not yet defined | `FIXED — Deterministic release packaging and distribution contract verified` | Phase 15 |
-| **SUI-016** | Medium | Core / Resource Lifecycle | Owner-unload external UI resource cleanup limitation | `FIX PENDING VERIFICATION REPAIR` | Phase 16.1 / 16.1.1 |
+| **SUI-016** | Medium | Core / Resource Lifecycle | Owner-unload external UI resource cleanup limitation | `FIXED — Explicit owner-AMX pre-unload lifecycle cleanup verified` | Phase 16.1 / 16.1.1 |
 | **SUI-017** | High | Core / Lifecycle / Identity | Re-entrant group replacement / generation identity confusion | `FIXED — runtime regression verified` | Phase 6 |
 | **SUI-018** | Medium | Core / Resource Lifecycle | In-flight callback execution error leaves partial external UI resources in indeterminate state | `CONFIRMED` | Phase 8 |
 
@@ -275,7 +275,7 @@
 - **ID:** SUI-016
 - **Severity:** Medium
 - **Area:** Core / Resource Lifecycle
-- **Status:** FIX PENDING VERIFICATION REPAIR
+- **Status:** FIXED — Explicit owner-AMX pre-unload lifecycle cleanup verified
 - **Fix Summary:**
   - Implemented Model E (Explicit Owner-AMX Pre-Unload Cleanup) providing `native SUI_CleanupOwnerGroups();` (0 parameters, AMX inferred from caller).
   - Enables scripts to invoke registered lifecycle callbacks (`cbHide`, `cbDestroy`) while the calling AMX is still fully valid, allowing user code to execute `PlayerTextDrawDestroy` and reclaim host resources before script teardown.
@@ -286,9 +286,9 @@
   - Player teardown collision protection: `CleanupPlayer` and `ResetPlayer` reject execution while a player context contains groups undergoing owner cleanup.
   - Eviction exclusion: Groups belonging to cleanup-active AMX are excluded from candidate pools.
   - Terminal sweep: All owned groups guaranteed erased, active accounting decremented with double-subtraction protection, and caller AMX retained in `activeAmxInstances` until actual SA-MP host `AmxUnload` occurs.
-- **Verification:** Verified across 14 new permanent assertions (U1–U14) in test suite `amx_unload_cleanup`, reaching 165 / 165 PASS across all 12 regression suites. Real connected NPC verified across 3 consecutive unload/reload cycles demonstrating exact PlayerTextDraw handle reuse without pool drift or slot creep. Verified on GitHub Actions hosted CI (Run ID `35042755290`, commit `b2b4967`).
+- **Verification:** Verified across 14 new permanent assertions (U1–U14) in test suite `amx_unload_cleanup`, reaching 165 / 165 PASS across all 12 regression suites. Real connected NPC verified across 3 consecutive unload/reload cycles demonstrating exact PlayerTextDraw handle reuse without pool drift or slot creep. Verified on GitHub Actions hosted CI (Run ID `35043838692`, commit `dbf32ea`).
 - **Evidence:** `src/Core.hpp`, `src/Core.cpp`, `src/Natives.hpp`, `src/Natives.cpp`, `src/main.cpp`, `pawn/sui.inc`, `tests/amx_unload_cleanup/`, `tests/RUNTIME_MATRIX.md`.
-- **Planned phase:** Phase 16.1
+- **Planned phase:** Phase 16.1 / 16.1.1
 
 ---
 
