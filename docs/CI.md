@@ -227,7 +227,9 @@ The GitHub Actions workflow is defined in [`.github/workflows/ci.yml`](../.githu
 
 ## 6. Verified Hosted CI Evidence
 
-The CI pipeline is authoritatively verified on GitHub-hosted infrastructure:
+The CI pipeline architecture and automated gates are authoritatively verified on GitHub-hosted infrastructure (`ubuntu-24.04` runner).
+
+### Historical Phase Baseline Evidence (Phase 17 Verification)
 
 - **Repository:** `PanDbEar/sui-plugin`
 - **Workflow:** `SUI Continuous Integration` (`.github/workflows/ci.yml`)
@@ -237,17 +239,24 @@ The CI pipeline is authoritatively verified on GitHub-hosted infrastructure:
 - **Runner Environment:** `ubuntu-24.04` (GitHub Actions hosted runner)
 - **Workflow Conclusion:** `success`
 - **SDK Submodule Pin:** Verified `a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5`
-- **Layer A (Static Contracts):**
-  - API Surface Contract: 7 / 7 PASS (20 C++ natives, 1 stock helper)
-  - Source Surface Contract: 6 / 6 PASS (6 canonical files, 3 C++ translation units, 0 leaks)
-- **Layer B (Build & Compilation):**
-  - Architecture: ELF32, Intel 80386, DYN shared object file
-  - Canonical Exports: All 6 present (`Supports`, `Load`, `Unload`, `AmxLoad`, `AmxUnload`, `ProcessTick`)
-  - Pawn Compilation: 23 / 23 PASS (0 errors, 0 emitted warnings under `-w239`)
-- **Layer C (Live Runtime Regression):**
-  - All 13 permanent suites executed on headless SA-MP 0.3.7-R2 server
-  - Assertion Total: 179 / 179 PASS (100% assertion coverage, zero regressions)
-- **Layer D (Release Packaging & Smoke):**
-  - Release Package Contract: 12 / 12 PASS (PK1–PK12)
-  - Package Deployment Smoke: PASS (isolated boundary boot and shutdown)
+
+### Release-Readiness & Pre-Tag Verification Policy
+
+Final pre-tag verification runs are executed on candidate branches (such as `release/v1.0.0-readiness`) and recorded authoritatively in the respective release-readiness reports and GitHub Actions run history, preventing circular commits. Every release candidate gate verifies:
+
+- **4-Layer Architecture (Layers A–D):**
+  - **Layer A (Static Contracts):**
+    - API Surface Contract: 7 / 7 PASS (20 C++ natives, 1 `SUI_RegisterGroup` stock helper)
+    - Source Surface Contract: 6 / 6 PASS (canonical 6 files in `src/`, 3 C++ translation units, 0 leaks, portable automation paths)
+  - **Layer B (Build & Compilation):**
+    - Architecture: ELF32, Intel 80386, `-m32`, DYN shared object file
+    - Canonical Exports: All 6 present (`Supports`, `Load`, `Unload`, `AmxLoad`, `AmxUnload`, `ProcessTick`)
+    - Pawn Compilation: 23 / 23 PASS (0 errors, 0 emitted warnings under `-w239` policy with pinned `pawn-lang/compiler` v3.10.10)
+  - **Layer C (Live Runtime Regression):**
+    - All 13 permanent suites executed on headless SA-MP 0.3.7-R2 server
+    - Assertion Total: 179 / 179 PASS (100% assertion coverage, zero regressions)
+  - **Layer D (Release Packaging & Smoke):**
+    - Release Package Contract: 12 / 12 PASS (PK1–PK12 structural and license checks)
+    - Package Deployment Smoke: PASS (isolated boundary boot, lifecycle execution, clean shutdown)
+    - Deterministic Package Reproducibility: 100% byte-for-byte identical archives with fixed `SOURCE_DATE_EPOCH`
 - **Cleanup:** `pkill -9 -f samp03svr` and `rm -rf test-server test-server-smoke` executed cleanly in `if: always()` step.

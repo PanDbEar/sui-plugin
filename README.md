@@ -3,7 +3,7 @@
 [![C++ Standard](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.wikipedia.org/wiki/C%2B%2B20)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20x86%20(32--bit)-orange.svg)](docs/BUILD.md)
 [![CI](https://img.shields.io/badge/CI-Automated%20Gates%20(4--Layer)-brightgreen.svg)](docs/CI.md)
-[![Status](https://img.shields.io/badge/Status-Release%20Ready%20(v1.0.0--RC)-brightgreen.svg)](docs/KNOWN_ISSUES.md)
+[![Version](https://img.shields.io/badge/Version-v1.0.0-brightgreen.svg)](docs/RELEASE.md)
 
 **SUI (Smart UI Virtualizer)** is an intelligent UI lifecycle manager and PlayerTextDraw virtualizer designed for SA-MP and open.mp legacy plugin environments.
 

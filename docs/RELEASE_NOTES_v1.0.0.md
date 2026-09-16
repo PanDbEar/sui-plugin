@@ -1,4 +1,4 @@
-# SUI (Smart UI Virtualizer) — Release Notes v1.0.0 (Release Candidate Draft)
+# SUI (Smart UI Virtualizer) — Release Notes v1.0.0
 
 **Release Target:** v1.0.0  
 **Target Platform:** SA-MP 0.3.7-R2 Linux x86 (ELF32 / Intel 80386 / -m32)  
