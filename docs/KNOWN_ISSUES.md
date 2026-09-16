@@ -323,14 +323,14 @@
 - **Root Cause:** SUI virtualizes higher-level UI groups and does not own or intercept individual host SA-MP `PlayerTextDraw` allocation handles. If a user callback (`cbCreate`) allocates host textdraw resources and then encounters an unhandled AMX runtime error (`AMX_ERR_*`), execution terminates prematurely. Prior to Phase 17, SUI left the group uncreated without attempting compensation, leaving any host handles allocated prior to the error outside SUI tracking. If `ShowGroup` was repeatedly invoked, repeated failed callback executions could lead to unbounded host handle slot creep.
 - **Fix Summary:**
   - Implemented internal group recovery quarantine via `SUIGroup::recoveryDestroyRequired = true`.
-  - On `cbCreate` failure (AMX error or capacity accounting failure), SUI refrains from marking `isCreated = true`, debits zero capacity (`activeTextDrawCount` remains uncorrupted), sets `recoveryDestroyRequired = true`, and immediately attempts a best-effort compensating destroy callback (`cbDestroy`).
+  - On `cbCreate` failure (AMX error) or post-create accounting commit failure (`TryAddActiveTextDrawCount` rejection), SUI refrains from marking `isCreated = true`, debits zero capacity (`activeTextDrawCount` remains uncorrupted), sets `recoveryDestroyRequired = true`, and immediately attempts a best-effort compensating destroy callback (`cbDestroy`).
   - If compensating destroy succeeds, the quarantine flag is cleared (`recoveryDestroyRequired = false`). If compensating destroy fails, the group remains quarantined.
   - Quarantined groups strictly reject subsequent `ShowGroup` invocations without re-executing `cbCreate`, preventing unbounded external resource accumulation.
   - Subsequent manual `SUI_DestroyGroup`, owner pre-unload cleanup `SUI_CleanupOwnerGroups`, player disconnection `SUI_CleanupPlayer`, or `SUI_ResetPlayer` retries compensating destroy for quarantined uncreated groups without corrupting capacity accounting.
   - Verified that cooperative callback authors who record external handles before error points achieve exact handle reuse across repeated failure/recovery cycles (zero slot creep).
   - Explicit architectural boundary: SUI cannot guarantee cleanup when callback-created resources were never recorded anywhere accessible to `cbDestroy`. Untracked external host resources remain outside SUI ownership.
-- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing permanent test suite 13 `tests/callback_error_recovery/` (scenarios F1 through F12) achieving 12/12 PASS. Cumulative 177/177 assertions passing across all 13 permanent test suites with zero regressions.
+- **Runtime Verification:** Verified in live headless 32-bit Linux SA-MP dedicated server (`samp03svr`) executing permanent test suite 13 `tests/callback_error_recovery/` (scenarios F1 through F14) achieving 14/14 PASS. Cumulative 179 / 179 executed runtime assertions passed across 13 permanent suites.
 - **Evidence:** `src/Core.hpp`, `src/Core.cpp`, `tests/callback_error_recovery/`, `tests/RUNTIME_MATRIX.md`.
-- **Planned phase:** Phase 17
+- **Planned phase:** Phase 17 / 17.1
 
 

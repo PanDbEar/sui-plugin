@@ -1,6 +1,6 @@
 # SUI Runtime Test Execution Matrix
 
-This document defines the authoritative configuration, script dependencies, fixture requirements, and expected outcomes for all 10 permanent regression test suites in SUI.
+This document defines the authoritative configuration, script dependencies, fixture requirements, and expected outcomes for all 13 permanent regression test suites in SUI.
 
 ---
 
@@ -20,9 +20,9 @@ This document defines the authoritative configuration, script dependencies, fixt
 | **player_id_validation** | `player_id_validation` | *(none)* | *(none)* | 14 | 14 / 14 PASS | Yes |
 | **api_contract_runtime** | `api_contract_runtime` | *(none)* | *(none)* | 10 | 10 / 10 PASS | Yes |
 | **amx_unload_cleanup** | `owner_cleanup_gamemode` | `owner_cleanup_filterscript` | *(none)* | 14 | 14 / 14 PASS | Yes |
-| **callback_error_recovery** | `callback_error_gamemode` | `callback_error_filterscript` | *(none)* | 12 | 12 / 12 PASS | Yes |
+| **callback_error_recovery** | `callback_error_gamemode` | `callback_error_filterscript` | *(none)* | 14 | 14 / 14 PASS | Yes |
 
-**Total Permanent Suite Pass Rate:** **177 / 177 PASS (100%)**
+**Total Permanent Suite Pass Rate:** **179 / 179 executed runtime assertions passed across 13 permanent suites**
 
 ---
 
@@ -180,15 +180,23 @@ This document defines the authoritative configuration, script dependencies, fixt
   8. Instance replacement / ABA protection ensures stale callback returns or re-registrations cannot corrupt new instances.
   9. Cross-AMX isolation ensures failure quarantine in one AMX does not affect healthy groups in another AMX.
   10. Real PlayerTextDraw handle reuse demonstrates exact handle reuse across repeated failure/recovery cycles (zero slot creep).
-- **Assertions:** F1–F12 (12 tests)
-- **Exit Behavior:** Server automatically terminates via RCON upon completing F12.
+  11. Untracked local handle limitation reproduces host retention of un-freed slots.
+  12. Post-create accounting-commit failure triggers quarantine and compensating destroy without phantom capacity debit.
+- **Assertions:** F1–F14 (14 tests)
+- **Exit Behavior:** Server automatically terminates via RCON upon completing F14.
 
 ---
 
 ## Compilation Guidelines
 
-All test scripts must be compiled with the Pawn 3.2.3664 compiler:
-```bash
-pawncc <file>.pwn -i<pawno_include> -ipawn -o<file>.amx
-```
+All tracked Pawn test fixtures must be compiled using the pinned CI compiler:
+- **Compiler:** `pawn-lang/compiler v3.10.10`
+- **SHA-256:** `9bbb1df6e933318fce1fa61951e4196b70613c637a5a1d4c96937e147c18468d`
+- **Automation Tool:** `python scripts/compile_pawn.py`
+- **Warning Policy:** `0 emitted warnings under the pinned CI warning policy (-w239)`
+
+Source surface requirements:
+- `src/` contains exactly six canonical source-surface files (`Core.cpp`, `Core.hpp`, `Natives.cpp`, `Natives.hpp`, `Utils.hpp`, `main.cpp`).
+- `src/` contains exactly three project .cpp translation units: `Core.cpp`, `Natives.cpp`, `main.cpp`.
+
 Never commit `.amx` binaries into the git repository.

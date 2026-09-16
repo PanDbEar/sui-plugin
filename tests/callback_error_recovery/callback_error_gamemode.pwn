@@ -15,6 +15,8 @@ new g_test_f9_pass = 0;
 new g_test_f10_pass = 0;
 new g_test_f11_pass = 0;
 new g_test_f12_pass = 0;
+new g_test_f13_pass = 0;
+new g_test_f14_pass = 0;
 
 // F1 state
 new g_F1_CreateFired = 0;
@@ -41,10 +43,24 @@ new g_F9_CreateFired = 0;
 new g_F9_DestroyFired = 0;
 new g_F9_DestroyShouldFail = 1;
 
-// F10 state
-new g_F10_CreateFired = 0;
-new g_F10_DestroyFired = 0;
-new g_F10_CreateShouldFail = 1;
+// F10 state (True ABA / replacement-generation isolation)
+new g_F10_OldCreateFired = 0;
+new g_F10_OldDestroyFired = 0;
+new g_F10_ReplCreateFired = 0;
+new g_F10_ReplShowFired = 0;
+new g_F10_ReplHideFired = 0;
+new g_F10_ReplDestroyFired = 0;
+new g_F10_InCompensation = 0;
+new g_F10_ReplacementRegistered = 0;
+
+// F13 state (Untracked local handle limitation)
+new g_F13_CreateFired = 0;
+new g_F13_DestroyFired = 0;
+new g_F13_AllocatedHandleId = -1;
+
+// F14 state (Post-create accounting failure)
+new g_F14_CreateFired = 0;
+new g_F14_DestroyFired = 0;
 
 // F11 GM state
 new g_F11_GmCreateFired = 0;
@@ -254,18 +270,16 @@ public OnF9_Destroy(playerid)
 }
 
 // ------------------------------------------------------------------
-// F10 Callbacks
+// F10 Callbacks (True ABA: Old and Replacement generations)
 // ------------------------------------------------------------------
 forward OnF10_Create(playerid);
 public OnF10_Create(playerid)
 {
-    g_F10_CreateFired++;
-    if (g_F10_CreateShouldFail)
-    {
-        new z = 0;
-        new v = 10 / z;
-        #pragma unused v
-    }
+    g_F10_OldCreateFired++;
+    // Deterministic AMX runtime error on first create to trigger compensation
+    new z = 0;
+    new v = 10 / z;
+    #pragma unused v
     return 1;
 }
 
@@ -278,7 +292,46 @@ public OnF10_Hide(playerid) { return 1; }
 forward OnF10_Destroy(playerid);
 public OnF10_Destroy(playerid)
 {
-    g_F10_DestroyFired++;
+    g_F10_OldDestroyFired++;
+    if (g_F10_InCompensation == 1)
+    {
+        // Inside compensating destroy of the old generation:
+        // 1. Genuinely remove the old generation via terminal player cleanup
+        SUI_CleanupPlayer(playerid);
+
+        // 2. Register replacement generation under the exact same player and group name
+        SUI_CreatePlayerFactoryGroup(playerid, "f10_grp", "OnF10Repl_Create", "OnF10Repl_Destroy", "OnF10Repl_Show", "OnF10Repl_Hide");
+        SUI_SetGroupSize(playerid, "f10_grp", 6); // Distinct size from old generation (4)
+        g_F10_ReplacementRegistered = 1;
+    }
+    return 1;
+}
+
+forward OnF10Repl_Create(playerid);
+public OnF10Repl_Create(playerid)
+{
+    g_F10_ReplCreateFired++;
+    return 1;
+}
+
+forward OnF10Repl_Show(playerid);
+public OnF10Repl_Show(playerid)
+{
+    g_F10_ReplShowFired++;
+    return 1;
+}
+
+forward OnF10Repl_Hide(playerid);
+public OnF10Repl_Hide(playerid)
+{
+    g_F10_ReplHideFired++;
+    return 1;
+}
+
+forward OnF10Repl_Destroy(playerid);
+public OnF10Repl_Destroy(playerid)
+{
+    g_F10_ReplDestroyFired++;
     return 1;
 }
 
@@ -344,6 +397,70 @@ public OnF12_Destroy(playerid)
         PlayerTextDrawDestroy(playerid, g_F12_Handle);
         g_F12_Handle = PlayerText:INVALID_TEXT_DRAW;
     }
+    return 1;
+}
+
+// ------------------------------------------------------------------
+// F13 Untracked Local Handle Limitation Callbacks
+// ------------------------------------------------------------------
+forward OnF13_Create(playerid);
+public OnF13_Create(playerid)
+{
+    g_F13_CreateFired++;
+    // Allocate host PlayerTextDraw into local variable ONLY
+    new PlayerText:localHandle = CreatePlayerTextDraw(playerid, 100.0, 100.0, "F13_Untracked");
+    g_F13_AllocatedHandleId = _:localHandle;
+    printf("[F13] OnF13_Create: allocated untracked local handle id=%d", g_F13_AllocatedHandleId);
+
+    // Deliberate AMX runtime error before writing to module cleanup state
+    new z = 0;
+    new v = 10 / z;
+    #pragma unused v, localHandle
+    return 1;
+}
+
+forward OnF13_Show(playerid);
+public OnF13_Show(playerid) { return 1; }
+
+forward OnF13_Hide(playerid);
+public OnF13_Hide(playerid) { return 1; }
+
+forward OnF13_Destroy(playerid);
+public OnF13_Destroy(playerid)
+{
+    g_F13_DestroyFired++;
+    // cbDestroy executes successfully, but has no handle value to destroy because
+    // it was held only in local stack state of OnF13_Create
+    print("[F13] OnF13_Destroy: executing compensation without untracked handle reference");
+    return 1;
+}
+
+// ------------------------------------------------------------------
+// F14 Post-Create Accounting Failure Callbacks
+// ------------------------------------------------------------------
+forward OnF14_Create(playerid);
+public OnF14_Create(playerid)
+{
+    g_F14_CreateFired++;
+    // Mutate capacity configuration during cbCreate such that TryAddActiveTextDrawCount fails afterward!
+    // Lower eviction threshold to 5, then lower max textdraws to 5.
+    SUI_SetEvictionThreshold(playerid, 5);
+    SUI_SetMaxTextDraws(playerid, 5);
+    // cbCreate completes successfully with AMX_ERR_NONE (return 1)
+    return 1;
+}
+
+forward OnF14_Show(playerid);
+public OnF14_Show(playerid) { return 1; }
+
+forward OnF14_Hide(playerid);
+public OnF14_Hide(playerid) { return 1; }
+
+forward OnF14_Destroy(playerid);
+public OnF14_Destroy(playerid)
+{
+    g_F14_DestroyFired++;
+    // Cooperative compensating destroy succeeds
     return 1;
 }
 
@@ -552,30 +669,64 @@ public RunAllRecoveryTests()
     SUI_CleanupPlayer(testPid9);
 
     // ==============================================================
-    // F10: Instance replacement / ABA protection during compensation
+    // F10: TRUE ABA / replacement-generation isolation
     // ==============================================================
-    g_F10_CreateShouldFail = 1;
-    SUI_CreatePlayerFactoryGroup(pid, "f10_grp", "OnF10_Create", "OnF10_Destroy", "OnF10_Show", "OnF10_Hide");
-    SUI_SetGroupSize(pid, "f10_grp", 4);
-    SUI_ShowGroup(pid, "f10_grp"); // fails create, compensates, uncreated
+    new testPid10 = 3;
+    SUI_CreatePlayerFactoryGroup(testPid10, "f10_grp", "OnF10_Create", "OnF10_Destroy", "OnF10_Show", "OnF10_Hide");
+    SUI_SetGroupSize(testPid10, "f10_grp", 4);
 
-    // Re-register group with same name (generates new instance ID)
-    g_F10_CreateShouldFail = 0; // next create will succeed
-    SUI_CreatePlayerFactoryGroup(pid, "f10_grp", "OnF10_Create", "OnF10_Destroy", "OnF10_Show", "OnF10_Hide");
-    SUI_SetGroupSize(pid, "f10_grp", 4);
-    new f10_showOk = SUI_ShowGroup(pid, "f10_grp");
-    new f10_created = SUI_IsGroupCreated(pid, "f10_grp");
-    new f10_destroyOk = SUI_DestroyGroup(pid, "f10_grp");
+    g_F10_InCompensation = 1;
+    // ShowGroup attempts create, crashes, invokes AttemptCompensatingDestroy
+    // Inside OnF10_Destroy, SUI_CleanupPlayer genuinely removes old generation, and registers replacement
+    new f10_oldShowRes = SUI_ShowGroup(testPid10, "f10_grp");
+    g_F10_InCompensation = 0;
 
-    if (f10_showOk == 1 && f10_created == 1 && f10_destroyOk == 1 && g_F10_CreateFired == 2 && g_F10_DestroyFired == 2)
+    // Outer ShowGroup must return 0 (failed)
+    // Now verify the replacement generation behaviorally:
+    new bool:f10_replInitiallyCreated = SUI_IsGroupCreated(testPid10, "f10_grp");
+    new f10_replInitialActive = SUI_GetActiveTextDrawCount(testPid10);
+
+    // Replacement must be able to ShowGroup successfully (proves stale transaction did not corrupt flags or leave quarantine)
+    new f10_replShowOk = SUI_ShowGroup(testPid10, "f10_grp");
+    new bool:f10_replCreatedAfterShow = SUI_IsGroupCreated(testPid10, "f10_grp");
+    new bool:f10_replVisibleAfterShow = SUI_IsGroupVisible(testPid10, "f10_grp");
+    new f10_replActiveAfterShow = SUI_GetActiveTextDrawCount(testPid10); // must be 6!
+
+    // Replacement must be able to DestroyGroup successfully
+    new f10_replDestroyOk = SUI_DestroyGroup(testPid10, "f10_grp");
+    new bool:f10_replCreatedAfterDestroy = SUI_IsGroupCreated(testPid10, "f10_grp");
+    new f10_replActiveAfterDestroy = SUI_GetActiveTextDrawCount(testPid10); // must be 0!
+
+    // Clean up testPid10
+    SUI_CleanupPlayer(testPid10);
+
+    if (f10_oldShowRes == 0 &&
+        g_F10_OldCreateFired == 1 &&
+        g_F10_OldDestroyFired == 1 &&
+        g_F10_ReplacementRegistered == 1 &&
+        !f10_replInitiallyCreated &&
+        f10_replInitialActive == 0 &&
+        f10_replShowOk == 1 &&
+        f10_replCreatedAfterShow &&
+        f10_replVisibleAfterShow &&
+        f10_replActiveAfterShow == 6 &&
+        g_F10_ReplCreateFired == 1 &&
+        g_F10_ReplShowFired == 1 &&
+        f10_replDestroyOk == 1 &&
+        !f10_replCreatedAfterDestroy &&
+        f10_replActiveAfterDestroy == 0 &&
+        g_F10_ReplDestroyFired == 1)
     {
         g_test_f10_pass = 1;
-        print("[TEST-F10] PASS: Re-registered group allocated fresh instance ID; new instance operated cleanly.");
+        print("[TEST-F10] PASS: True ABA replacement generation verified; stale compensation transaction did not mutate replacement.");
     }
     else
     {
-        printf("[TEST-F10] FAIL: showOk=%d created=%d destroyOk=%d createFired=%d destroyFired=%d",
-            f10_showOk, f10_created, f10_destroyOk, g_F10_CreateFired, g_F10_DestroyFired);
+        printf("[TEST-F10] FAIL: oldShow=%d oldCreate=%d oldDestroy=%d replReg=%d initCreated=%d initAct=%d showOk=%d crAfter=%d visAfter=%d actAfter=%d repCr=%d repSh=%d destOk=%d crDest=%d actDest=%d repDest=%d",
+            f10_oldShowRes, g_F10_OldCreateFired, g_F10_OldDestroyFired, g_F10_ReplacementRegistered,
+            _:f10_replInitiallyCreated, f10_replInitialActive, f10_replShowOk, _:f10_replCreatedAfterShow,
+            _:f10_replVisibleAfterShow, f10_replActiveAfterShow, g_F10_ReplCreateFired, g_F10_ReplShowFired,
+            f10_replDestroyOk, _:f10_replCreatedAfterDestroy, f10_replActiveAfterDestroy, g_F10_ReplDestroyFired);
     }
 
     // ==============================================================
@@ -644,17 +795,100 @@ public RunAllRecoveryTests()
     SUI_DestroyGroup(pid, "f12_grp");
 
     // ==============================================================
+    // F13: Untracked-local-handle limitation reproduction
+    // ==============================================================
+    new testPid13 = pid; // Connected NPC
+    // Determine base available slot
+    new PlayerText:f13_probe0 = CreatePlayerTextDraw(testPid13, 10.0, 10.0, "f13_probe0");
+    new f13_baseId = _:f13_probe0;
+    PlayerTextDrawDestroy(testPid13, f13_probe0);
+
+    SUI_CreatePlayerFactoryGroup(testPid13, "f13_grp", "OnF13_Create", "OnF13_Destroy", "OnF13_Show", "OnF13_Hide");
+    SUI_SetGroupSize(testPid13, "f13_grp", 1);
+
+    new f13_showRes = SUI_ShowGroup(testPid13, "f13_grp"); // Fails create, attempts compensating destroy
+
+    // Now allocate a host probe PlayerTextDraw to observe slot allocation
+    new PlayerText:f13_probe1 = CreatePlayerTextDraw(testPid13, 20.0, 20.0, "f13_probe1");
+    new f13_probeId = _:f13_probe1;
+    printf("[F13] Limitation observation: baseId=%d, allocatedId=%d, probeId=%d",
+        f13_baseId, g_F13_AllocatedHandleId, f13_probeId);
+
+    // Clean up all knowable handles
+    PlayerTextDrawDestroy(testPid13, f13_probe1);
+    if (g_F13_AllocatedHandleId != -1)
+    {
+        PlayerTextDrawDestroy(testPid13, PlayerText:g_F13_AllocatedHandleId);
+    }
+    SUI_DestroyGroup(testPid13, "f13_grp");
+
+    // On SA-MP 0.3.7-R2 host, probeId > g_F13_AllocatedHandleId (the slot remained retained by the host)
+    if (f13_showRes == 0 &&
+        g_F13_CreateFired == 1 &&
+        g_F13_DestroyFired == 1 &&
+        g_F13_AllocatedHandleId != -1 &&
+        f13_probeId > g_F13_AllocatedHandleId)
+    {
+        g_test_f13_pass = 1;
+        print("[TEST-F13] PASS: Untracked local handle limitation reproduced; host retained un-freed handle slot.");
+    }
+    else
+    {
+        printf("[TEST-F13] FAIL: showRes=%d createFired=%d destroyFired=%d allocId=%d probeId=%d",
+            f13_showRes, g_F13_CreateFired, g_F13_DestroyFired, g_F13_AllocatedHandleId, f13_probeId);
+    }
+
+    // ==============================================================
+    // F14: Post-create accounting-commit failure compensation
+    // ==============================================================
+    new testPid14 = 4;
+    SUI_CreatePlayerFactoryGroup(testPid14, "f14_grp", "OnF14_Create", "OnF14_Destroy", "OnF14_Show", "OnF14_Hide");
+    SUI_SetGroupSize(testPid14, "f14_grp", 10); // Requires 10 textdraws
+
+    // At this point, maxTextDraws = 256, evictionThreshold = 230, active = 0.
+    // EnsureCapacity(10) passes (10 <= 230 <= 256).
+    // OnF14_Create runs, changes threshold to 5 and max to 5.
+    // TryAddActiveTextDrawCount checks 0 + 10 > 5 -> fails!
+    // SUI logs "Create callback accounting failed"
+    // Sets recoveryDestroyRequired = true
+    // Calls AttemptCompensatingDestroy -> OnF14_Destroy runs and succeeds
+    // recoveryDestroyRequired cleared
+    // ShowGroup returns 0
+    new f14_showRes = SUI_ShowGroup(testPid14, "f14_grp");
+    new bool:f14_created = SUI_IsGroupCreated(testPid14, "f14_grp");
+    new f14_active = SUI_GetActiveTextDrawCount(testPid14);
+
+    // Clean up testPid14
+    SUI_CleanupPlayer(testPid14);
+
+    if (f14_showRes == 0 &&
+        g_F14_CreateFired == 1 &&
+        g_F14_DestroyFired == 1 &&
+        !f14_created &&
+        f14_active == 0)
+    {
+        g_test_f14_pass = 1;
+        print("[TEST-F14] PASS: Post-create accounting failure triggered quarantine and compensating destroy.");
+    }
+    else
+    {
+        printf("[TEST-F14] FAIL: showRes=%d createFired=%d destroyFired=%d created=%d active=%d",
+            f14_showRes, g_F14_CreateFired, g_F14_DestroyFired, _:f14_created, f14_active);
+    }
+
+    // ==============================================================
     // Final Tally
     // ==============================================================
     new totalPassed = g_test_f1_pass + g_test_f2_pass + g_test_f3_pass + g_test_f4_pass +
                       g_test_f5_pass + g_test_f6_pass + g_test_f7_pass + g_test_f8_pass +
-                      g_test_f9_pass + g_test_f10_pass + g_test_f11_pass + g_test_f12_pass;
+                      g_test_f9_pass + g_test_f10_pass + g_test_f11_pass + g_test_f12_pass +
+                      g_test_f13_pass + g_test_f14_pass;
 
     print("================================================================");
-    printf("   SUI CALLBACK ERROR RECOVERY RESULTS: %d / 12 PASSED", totalPassed);
+    printf("   SUI CALLBACK ERROR RECOVERY RESULTS: %d / 14 PASSED", totalPassed);
     print("================================================================");
 
-    if (totalPassed == 12)
+    if (totalPassed == 14)
     {
         print("ALL CALLBACK ERROR RECOVERY TESTS PASSED");
     }

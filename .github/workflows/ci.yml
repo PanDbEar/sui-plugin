@@ -142,7 +142,7 @@ jobs:
           set -euo pipefail
           cp build/sui-plugin-legacy.so test-server/plugins/sui-plugin-legacy.so
 
-      - name: Layer C — Execute 13 Permanent Regression Suites (177 Assertions)
+      - name: Layer C — Execute 13 Permanent Regression Suites (179 Assertions)
         run: |
           set -euo pipefail
           python scripts/run_regression.py --server-dir test-server
