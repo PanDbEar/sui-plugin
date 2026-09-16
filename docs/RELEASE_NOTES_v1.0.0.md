@@ -8,11 +8,11 @@
 
 ## Overview
 
-**SUI (Smart UI Virtualizer)** is an intelligent lifecycle manager and PlayerTextDraw virtualizer designed for SA-MP 0.3.7-R2 and legacy open.mp server environments.
+**SUI (Smart UI Virtualizer)** is an intelligent lifecycle manager and PlayerTextDraw virtualizer designed for SA-MP 0.3.7-R2 (Linux x86).
 
 In standard SA-MP servers, the host engine enforces a hard limit of 256 PlayerTextDraw allocations per player (`MAX_PLAYER_TEXT_DRAWS = 256`). Complex user interfaces (inventory systems, custom HUDs, speedometers, interactive dialogs, character creation menus) easily exhaust this limit when multiple systems allocate textdraws simultaneously.
 
-SUI resolves this limitation by virtualizing UI groups. Groups are allocated on demand, hidden when inactive, automatically destroyed after configurable idle timeouts, and prioritized for non-destructive LRU capacity eviction under memory pressure. SUI operates without hooking, binary patching, or intercepting native textdraw calls: the gamemode retains complete control over visual formatting and native creation.
+SUI resolves this limitation by virtualizing UI groups. Groups are allocated on demand, hidden when inactive, automatically destroyed after configurable idle timeouts, and prioritized for deterministic capacity eviction with non-destructive preflight under memory pressure. SUI operates without hooking, binary patching, or intercepting native textdraw calls: the gamemode retains complete control over visual formatting and native creation.
 
 ---
 
@@ -22,7 +22,7 @@ SUI resolves this limitation by virtualizing UI groups. Groups are allocated on 
 - **Toolchain:** GCC multilib with mandatory `-m32`.
 - **Interface:** Canonical SA-MP 0.3.7-R2 legacy plugin architecture.
 - **Canonical Exports (6):** `Supports`, `Load`, `Unload`, `AmxLoad`, `AmxUnload`, `ProcessTick`.
-- **Platform Scope:** Native open.mp components (`IComponent`), Windows native builds, and 64-bit architectures are not supported.
+- **Platform Scope:** Primary verified runtime: SA-MP 0.3.7-R2 Linux x86. The legacy plugin ABI may be usable with compatible open.mp hosting, but native open.mp components and live open.mp runtime verification are outside the v1.0.0 verification scope. Windows native builds and 64-bit architectures are not supported.
 
 ---
 
@@ -30,7 +30,7 @@ SUI resolves this limitation by virtualizing UI groups. Groups are allocated on 
 
 1. **Lazy On-Demand Allocation**: Textdraws are instantiated via `cbCreate` only when a group is first shown to a player.
 2. **Idle Destruction**: Inactive, hidden UI groups automatically destroy their allocated textdraws after a configurable duration, reclaiming host slots for active UI.
-3. **Non-Destructive LRU Capacity Eviction**: When textdraw capacity nears exhaustion, SUI deterministically evicts least-recently-used, evictable hidden groups. Preflight sufficiency checks ensure no groups are destroyed if capacity needs cannot be fully met.
+3. **Deterministic Capacity Eviction with Non-Destructive Preflight**: SUI first verifies that the ordered eligible candidate set can reclaim enough capacity. If sufficient reclaimable capacity does not exist, no candidate is destroyed. If sufficient capacity exists, eligible hidden groups are destroyed in policy-minimal ordered eviction until the required capacity is reclaimed.
 4. **Fine-Grained Priorities**: Groups can be configured with eviction priority levels (`LOW`, `NORMAL`, `HIGH`, `CRITICAL`) to shield critical HUD elements from eviction while allowing background menus to release resources.
 5. **Multi-AMX Ownership Isolation**: Groups are owned by the specific script (gamemode or filterscript) that registers them. Callbacks dispatch strictly to the owner AMX, preventing cross-script hijacking.
 6. **Owner-AMX Pre-Unload Cleanup (`SUI_CleanupOwnerGroups`)**: Provides an explicit terminal cleanup native for filterscripts and gamemodes, invoking lifecycle callbacks and purging metadata while the calling script AMX is still fully valid.
@@ -68,7 +68,7 @@ SUI resolves this limitation by virtualizing UI groups. Groups are allocated on 
 
 ### Shipped Stock Helper
 - `stock SUI_RegisterGroup(playerid, const group[], const cbCreate[], const cbDestroy[], const cbShow[], const cbHide[], size, timeout_ms, priority, bool:evictable)`  
-  Prevalidates parameters, registers factory group, and configures size, timeout, priority, and eviction eligibility in a single atomic call.
+  Prevalidates arguments, registers the factory group, and applies size, timeout, priority, and eviction configuration through one convenience helper call. The underlying configuration setters execute sequentially; the helper does not provide a general rollback guarantee for failures after registration has begun. An already-created live group is rejected before callback metadata mutation.
 
 ---
 
@@ -116,8 +116,8 @@ SUI v1.0.0 is verified across **Four Formal Evidence Layers**:
   - Canonical Exports: All 6 canonical entry points present
   - Pawn Compilation: 23 / 23 scripts PASS with 0 errors and 0 emitted warnings under pinned policy (`-w239`)
 - **Layer C (Live Runtime Regression):**
-  - **179 / 179 executed runtime assertions passed across 13 permanent suites** on headless SA-MP 0.3.7-R2 server
-  - Zero crashes, zero iterator invalidations, zero capacity leaks across all suites
+  - 179 / 179 executed runtime assertions passed across 13 permanent suites on the verified SA-MP 0.3.7-R2 Linux runtime, with no regression-test failures observed
+  - Zero crashes and zero iterator invalidations across all regression suites
 - **Layer D (Release Packaging & Smoke):**
   - `PK1–PK12`: 12 / 12 PASS (`check_release_package.py`)
   - Package Smoke: PASS (isolated boundary boot and shutdown using only packaged assets)
