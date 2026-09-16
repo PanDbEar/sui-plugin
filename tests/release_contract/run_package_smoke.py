@@ -165,9 +165,16 @@ def main():
 
     compile_cmd.extend(["-d3", "-O1", "-w239", "-;+", "-(+"])
 
+    # Prepare environment with LD_LIBRARY_PATH if needed for Linux pawncc
+    proc_env = os.environ.copy()
+    potential_lib = compiler_path.parent.parent / "lib"
+    if potential_lib.exists() and (potential_lib / "libpawnc.so").exists():
+        existing_ld = proc_env.get("LD_LIBRARY_PATH", "")
+        proc_env["LD_LIBRARY_PATH"] = f"{potential_lib}:{existing_ld}" if existing_ld else str(potential_lib)
+
     print(f"[COMPILE] Compiling smoke fixture with strictly package-isolated include:")
     print(f"          Command: {' '.join(compile_cmd)}")
-    comp_res = subprocess.run(compile_cmd, capture_output=True, text=True)
+    comp_res = subprocess.run(compile_cmd, env=proc_env, capture_output=True, text=True)
     if comp_res.returncode != 0 or not output_amx.exists():
         print(f"[FAIL] Pawn compilation failed:\n{comp_res.stdout}\n{comp_res.stderr}")
         shutil.rmtree(extract_temp, ignore_errors=True)
