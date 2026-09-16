@@ -10,8 +10,25 @@ extern void (*logprintf)(const char* format, ...);
 
 std::unordered_map<int, PlayerContext> SUICore::players;
 std::vector<AMX*> SUICore::activeAmxInstances;
+std::unordered_set<AMX*> SUICore::ownerCleanupActive;
 bool SUICore::debugEnabled = false;
 uint64_t SUICore::nextGroupInstanceId = 1;
+
+namespace {
+    struct OwnerCleanupGuard {
+        AMX* amx;
+        explicit OwnerCleanupGuard(AMX* a) : amx(a) {
+            if (amx) {
+                SUICore::ownerCleanupActive.insert(amx);
+            }
+        }
+        ~OwnerCleanupGuard() {
+            if (amx) {
+                SUICore::ownerCleanupActive.erase(amx);
+            }
+        }
+    };
+}
 
 bool SUICore::TryAllocateGroupInstanceId(uint64_t& outId)
 {
@@ -130,6 +147,215 @@ void SUICore::UnloadAmx(AMX* amx)
 
     Debug("UnloadAmx finished for amx=%p, remaining activeAmxInstances=%zu",
         amx, activeAmxInstances.size());
+}
+
+bool SUICore::IsOwnerCleanupActive(AMX* amx)
+{
+    if (!amx)
+    {
+        return false;
+    }
+    return ownerCleanupActive.count(amx) > 0;
+}
+
+bool SUICore::CleanupOwnerGroups(AMX* ownerAmx)
+{
+    if (!ownerAmx)
+    {
+        Debug("[SUI-DEBUG] CleanupOwnerGroups rejected: null amx");
+        return false;
+    }
+
+    if (!IsAmxActive(ownerAmx))
+    {
+        Debug("[SUI-DEBUG] CleanupOwnerGroups rejected: inactive amx %p", ownerAmx);
+        return false;
+    }
+
+    if (IsOwnerCleanupActive(ownerAmx))
+    {
+        Debug("[SUI-DEBUG] CleanupOwnerGroups rejected: owner cleanup already active for amx %p", ownerAmx);
+        return false;
+    }
+
+    OwnerCleanupGuard guard(ownerAmx);
+
+    Debug("[SUI-DEBUG] CleanupOwnerGroups started for amx=%p", ownerAmx);
+
+    // 1. Build deterministic snapshot of groups owned by ownerAmx
+    struct OwnerGroupSnapshot {
+        int playerId;
+        std::string groupName;
+        uint64_t instanceId;
+    };
+    std::vector<OwnerGroupSnapshot> snapshots;
+
+    for (const auto& [playerId, ctx] : players)
+    {
+        for (const auto& [groupName, group] : ctx.groups)
+        {
+            if (group.ownerAmx == ownerAmx)
+            {
+                snapshots.push_back({playerId, groupName, group.instanceId});
+            }
+        }
+    }
+
+    // Sort deterministically: playerId ascending, groupName lexicographical ascending
+    std::sort(snapshots.begin(), snapshots.end(), [](const OwnerGroupSnapshot& a, const OwnerGroupSnapshot& b) {
+        if (a.playerId != b.playerId)
+        {
+            return a.playerId < b.playerId;
+        }
+        return a.groupName < b.groupName;
+    });
+
+    bool allCallbacksSucceeded = true;
+
+    // 2. Process each snapshot
+    for (const auto& snap : snapshots)
+    {
+        // Reacquire PlayerContext and group
+        auto* ctx = GetPlayerContext(snap.playerId);
+        if (!ctx)
+        {
+            continue;
+        }
+
+        auto* group = GetPlayerGroupIfInstance(snap.playerId, snap.groupName, snap.instanceId);
+        if (!group || group->ownerAmx != ownerAmx)
+        {
+            continue;
+        }
+
+        // UNCREATED GROUP (Section 16):
+        // For isCreated == false: no hide callback, no destroy callback.
+        // Leave it for final terminal metadata sweep. No capacity subtraction.
+        if (!group->isCreated)
+        {
+            Debug("[SUI-DEBUG] CleanupOwnerGroups snapshot skipped uncreated group playerid=%d group=%s",
+                snap.playerId, snap.groupName.c_str());
+            continue;
+        }
+
+        // HIDDEN CREATED GROUP (Section 17):
+        // For isCreated == true && isVisible == false: attempt cbDestroy. No cbHide.
+        // VISIBLE CREATED GROUP (Section 18 & 19):
+        // For isCreated == true && isVisible == true: attempt cbHide, then cbDestroy.
+        // TERMINAL HIDE FAILURE SEMANTICS (Section 19):
+        // If cbHide execution fails, still attempt cbDestroy if same owned group still exists and AMX remains active.
+        
+        bool hideFailed = false;
+        if (group->isVisible)
+        {
+            group->isExecutingCallback = true;
+            std::string cbHide = group->cbHide;
+
+            Debug("[SUI-DEBUG] CleanupOwnerGroups calling cbHide playerid=%d group=%s callback=%s",
+                snap.playerId, snap.groupName.c_str(), cbHide.c_str());
+
+            PawnCallResult hideRes = CallPawnFunction(ownerAmx, snap.playerId, cbHide);
+            if (!hideRes.Success())
+            {
+                Debug("[SUI-DEBUG] CleanupOwnerGroups cbHide failed playerid=%d group=%s callback=%s amxErr=%d",
+                    snap.playerId, snap.groupName.c_str(), cbHide.c_str(), hideRes.amxError);
+                allCallbacksSucceeded = false;
+                hideFailed = true;
+            }
+
+            // Reacquire after hide callback
+            auto* postGroup = GetPlayerGroupIfInstance(snap.playerId, snap.groupName, snap.instanceId);
+            if (!postGroup || postGroup->ownerAmx != ownerAmx || !IsAmxActive(ownerAmx))
+            {
+                Debug("[SUI-DEBUG] CleanupOwnerGroups group removed, replaced or AMX inactive after cbHide playerid=%d group=%s",
+                    snap.playerId, snap.groupName.c_str());
+                continue;
+            }
+
+            postGroup->isExecutingCallback = false;
+            if (!hideFailed)
+            {
+                postGroup->isVisible = false;
+                postGroup->hiddenSinceTick = Utils::GetTickCountMs();
+                postGroup->lastUsedTick = postGroup->hiddenSinceTick;
+            }
+        }
+
+        // Now attempt cbDestroy if group is still created
+        auto* groupBeforeDestroy = GetPlayerGroupIfInstance(snap.playerId, snap.groupName, snap.instanceId);
+        if (!groupBeforeDestroy || groupBeforeDestroy->ownerAmx != ownerAmx || !IsAmxActive(ownerAmx))
+        {
+            continue;
+        }
+
+        if (!groupBeforeDestroy->isCreated)
+        {
+            // Already destroyed (e.g. during cbHide or another callback)
+            continue;
+        }
+
+        groupBeforeDestroy->isExecutingCallback = true;
+        std::string cbDestroy = groupBeforeDestroy->cbDestroy;
+
+        Debug("[SUI-DEBUG] CleanupOwnerGroups calling cbDestroy playerid=%d group=%s callback=%s",
+            snap.playerId, snap.groupName.c_str(), cbDestroy.c_str());
+
+        PawnCallResult destroyRes = CallPawnFunction(ownerAmx, snap.playerId, cbDestroy);
+        if (!destroyRes.Success())
+        {
+            Debug("[SUI-DEBUG] CleanupOwnerGroups cbDestroy failed playerid=%d group=%s callback=%s amxErr=%d",
+                snap.playerId, snap.groupName.c_str(), cbDestroy.c_str(), destroyRes.amxError);
+            allCallbacksSucceeded = false;
+        }
+
+        // Reacquire after destroy callback
+        auto* postCtx = GetPlayerContext(snap.playerId);
+        auto* postGroup = GetPlayerGroupIfInstance(snap.playerId, snap.groupName, snap.instanceId);
+        if (postGroup && postGroup->ownerAmx == ownerAmx)
+        {
+            postGroup->isExecutingCallback = false;
+            if (postGroup->isCreated && postCtx)
+            {
+                // Transition isCreated: true -> false, subtract capacity exactly once
+                MarkGroupDestroyed(*postCtx, *postGroup);
+            }
+        }
+    }
+
+    // 3. TERMINAL FINAL SWEEP (Section 24, 25)
+    // For every remaining group where group.ownerAmx == ownerAmx:
+    // If group.isCreated: subtract tracked estimatedSize exactly once.
+    // Erase group metadata.
+    // Uncreated: erase only.
+    for (auto& [playerId, ctx] : players)
+    {
+        auto itGroup = ctx.groups.begin();
+        while (itGroup != ctx.groups.end())
+        {
+            if (itGroup->second.ownerAmx == ownerAmx)
+            {
+                if (itGroup->second.isCreated)
+                {
+                    Debug("[SUI-DEBUG] CleanupOwnerGroups terminal sweep subtracting capacity playerid=%d group=%s size=%u",
+                        playerId, itGroup->first.c_str(), itGroup->second.estimatedSize);
+                    SubtractActiveTextDrawCount(ctx, itGroup->second.estimatedSize);
+                    itGroup->second.isCreated = false;
+                }
+                Debug("[SUI-DEBUG] CleanupOwnerGroups terminal sweep erasing group metadata playerid=%d group=%s",
+                    playerId, itGroup->first.c_str());
+                itGroup = ctx.groups.erase(itGroup);
+            }
+            else
+            {
+                ++itGroup;
+            }
+        }
+    }
+
+    Debug("[SUI-DEBUG] CleanupOwnerGroups finished for amx=%p result=%d",
+        ownerAmx, allCallbacksSucceeded ? 1 : 0);
+
+    return allCallbacksSucceeded;
 }
 
 PlayerContext* SUICore::GetPlayerContext(int playerId)
@@ -306,6 +532,13 @@ bool SUICore::RegisterFactoryGroup(
         return false;
     }
 
+    if (IsOwnerCleanupActive(amx))
+    {
+        Debug("RegisterFactoryGroup rejected: amx=%p is undergoing owner cleanup playerid=%d group=%s",
+            amx, playerId, group.c_str());
+        return false;
+    }
+
     auto itPlayer = players.find(playerId);
     if (itPlayer != players.end())
     {
@@ -319,6 +552,13 @@ bool SUICore::RegisterFactoryGroup(
         auto itGroup = itPlayer->second.groups.find(group);
         if (itGroup != itPlayer->second.groups.end())
         {
+            if (IsOwnerCleanupActive(itGroup->second.ownerAmx))
+            {
+                Debug("RegisterFactoryGroup rejected: existing group %s owner amx=%p is undergoing owner cleanup",
+                    group.c_str(), itGroup->second.ownerAmx);
+                return false;
+            }
+
             // Invariant 1: Different-owner registration is ALWAYS rejected while old group exists
             if (itGroup->second.ownerAmx != nullptr && itGroup->second.ownerAmx != amx)
             {
@@ -427,6 +667,13 @@ bool SUICore::ShowGroup(int playerId, const std::string& groupName)
     }
 
     auto& group = it->second;
+    if (IsOwnerCleanupActive(group.ownerAmx))
+    {
+        Debug("ShowGroup rejected: group %s owner amx=%p is undergoing owner cleanup playerid=%d",
+            groupName.c_str(), group.ownerAmx, playerId);
+        return false;
+    }
+
     uint64_t instanceId = group.instanceId;
     bool wasCreatedBeforeShow = group.isCreated;
 
@@ -669,6 +916,13 @@ bool SUICore::HideGroup(int playerId, const std::string& groupName)
     }
 
     auto& group = it->second;
+    if (IsOwnerCleanupActive(group.ownerAmx))
+    {
+        Debug("HideGroup rejected: group %s owner amx=%p is undergoing owner cleanup playerid=%d",
+            groupName.c_str(), group.ownerAmx, playerId);
+        return false;
+    }
+
     uint64_t instanceId = group.instanceId;
 
     if (group.isExecutingCallback)
@@ -758,6 +1012,13 @@ void SUICore::SetIdleTimeout(int playerId, const std::string& groupName, uint32_
     auto it = ctx->groups.find(groupName);
     if (it != ctx->groups.end())
     {
+        if (IsOwnerCleanupActive(it->second.ownerAmx))
+        {
+            Debug("SetIdleTimeout rejected: group %s owner amx=%p is undergoing owner cleanup playerid=%d",
+                groupName.c_str(), it->second.ownerAmx, playerId);
+            return;
+        }
+
         it->second.idleTimeoutMs = timeoutMs;
 
         Debug("SetIdleTimeout playerid=%d group=%s timeout=%u",
@@ -791,6 +1052,16 @@ bool SUICore::CleanupPlayer(int playerId)
     }
 
     auto& ctx = itPlayer->second;
+
+    for (const auto& [gName, grp] : ctx.groups)
+    {
+        if (IsOwnerCleanupActive(grp.ownerAmx))
+        {
+            Debug("CleanupPlayer rejected: playerid=%d contains group '%s' with active owner cleanup amx=%p",
+                playerId, gName.c_str(), grp.ownerAmx);
+            return false;
+        }
+    }
 
     if (ctx.teardownState != PlayerTeardownState::None)
     {
@@ -890,6 +1161,16 @@ bool SUICore::ResetPlayer(int playerId)
     }
 
     auto& ctx = itPlayer->second;
+
+    for (const auto& [gName, grp] : ctx.groups)
+    {
+        if (IsOwnerCleanupActive(grp.ownerAmx))
+        {
+            Debug("ResetPlayer rejected: playerid=%d contains group '%s' with active owner cleanup amx=%p",
+                playerId, gName.c_str(), grp.ownerAmx);
+            return false;
+        }
+    }
 
     if (ctx.teardownState != PlayerTeardownState::None)
     {
@@ -1002,6 +1283,13 @@ bool SUICore::SetGroupSize(int playerId, const std::string& groupName, uint32_t 
     }
 
     auto& group = it->second;
+
+    if (IsOwnerCleanupActive(group.ownerAmx))
+    {
+        Debug("SetGroupSize rejected: group %s owner amx=%p is undergoing owner cleanup playerid=%d",
+            groupName.c_str(), group.ownerAmx, playerId);
+        return false;
+    }
 
     if (group.isExecutingCallback)
     {
@@ -1228,6 +1516,13 @@ void SUICore::SetGroupPriority(int playerId, const std::string& groupName, uint8
         return;
     }
 
+    if (IsOwnerCleanupActive(it->second.ownerAmx))
+    {
+        Debug("SetGroupPriority rejected: group %s owner amx=%p is undergoing owner cleanup playerid=%d",
+            groupName.c_str(), it->second.ownerAmx, playerId);
+        return;
+    }
+
     if (priority > SUI_PRIORITY_CRITICAL)
     {
         priority = SUI_PRIORITY_CRITICAL;
@@ -1258,6 +1553,9 @@ std::vector<EvictionCandidate> SUICore::CollectEligibleEvictionCandidates(const 
     for (const auto& [groupName, group] : ctx.groups)
     {
         if (!group.isCreated)
+            continue;
+
+        if (IsOwnerCleanupActive(group.ownerAmx))
             continue;
 
         if (group.isVisible)
@@ -1308,7 +1606,8 @@ bool SUICore::EvictCandidate(PlayerContext& ctx, const EvictionCandidate& cand)
     }
 
     if (!candidate->isCreated || candidate->isVisible || candidate->isExecutingCallback ||
-        !candidate->evictable || candidate->priority >= SUI_PRIORITY_CRITICAL)
+        !candidate->evictable || candidate->priority >= SUI_PRIORITY_CRITICAL ||
+        IsOwnerCleanupActive(candidate->ownerAmx))
     {
         return false;
     }
@@ -1519,6 +1818,13 @@ bool SUICore::DestroyGroup(int playerId, const std::string& groupName)
             playerId,
             groupName.c_str()
         );
+        return false;
+    }
+
+    if (IsOwnerCleanupActive(itGroup->second.ownerAmx))
+    {
+        Debug("DestroyGroup rejected: group %s owner amx=%p is undergoing owner cleanup playerid=%d",
+            groupName.c_str(), itGroup->second.ownerAmx, playerId);
         return false;
     }
 
@@ -1762,6 +2068,13 @@ void SUICore::SetGroupEvictable(int playerId, const std::string& groupName, bool
         return;
     }
 
+    if (IsOwnerCleanupActive(it->second.ownerAmx))
+    {
+        Debug("SetGroupEvictable rejected: group %s owner amx=%p is undergoing owner cleanup playerid=%d",
+            groupName.c_str(), it->second.ownerAmx, playerId);
+        return;
+    }
+
     it->second.evictable = enabled;
 
     Debug("SetGroupEvictable playerid=%d group=%s enabled=%d",
@@ -1826,6 +2139,13 @@ bool SUICore::TouchGroup(int playerId, const std::string& groupName)
     }
 
     auto& group = itGroup->second;
+
+    if (IsOwnerCleanupActive(group.ownerAmx))
+    {
+        Debug("TouchGroup rejected: group %s owner amx=%p is undergoing owner cleanup playerid=%d",
+            groupName.c_str(), group.ownerAmx, playerId);
+        return false;
+    }
 
     uint64_t now = Utils::GetTickCountMs();
 

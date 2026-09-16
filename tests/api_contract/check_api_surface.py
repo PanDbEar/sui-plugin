@@ -101,11 +101,11 @@ def main():
 
     # AP1: Native Count Check
     total_checks += 1
-    if len(natives_in_inc) == 19 and len(registered_names) == 19:
+    if len(natives_in_inc) == 20 and len(registered_names) == 20:
         checks_passed += 1
-        print(f"[AP1] PASS: Authoritative native count is exactly 19 in include and registration table.")
+        print(f"[AP1] PASS: Authoritative native count is exactly 20 in include and registration table.")
     else:
-        print(f"[AP1] FAIL: Native counts mismatch: include={len(natives_in_inc)}, registration={len(registered_names)} (expected 19)")
+        print(f"[AP1] FAIL: Native counts mismatch: include={len(natives_in_inc)}, registration={len(registered_names)} (expected 20)")
 
     # AP2: Include vs Registration Name Equality
     total_checks += 1
@@ -137,7 +137,7 @@ def main():
 
     if not param_mismatches:
         checks_passed += 1
-        print(f"[AP4] PASS: All 19 natives have matching parameter counts between pawn/sui.inc and CheckParams.")
+        print(f"[AP4] PASS: All 20 natives have matching parameter counts between pawn/sui.inc and CheckParams.")
     else:
         print(f"[AP4] FAIL: Parameter count mismatches found: {param_mismatches}")
 
@@ -153,7 +153,7 @@ def main():
 
     if not handler_mismatches:
         checks_passed += 1
-        print(f"[AP5] PASS: All 19 registered C++ handlers are declared in Natives.hpp and defined in Natives.cpp.")
+        print(f"[AP5] PASS: All 20 registered C++ handlers are declared in Natives.hpp and defined in Natives.cpp.")
     else:
         print(f"[AP5] FAIL: C++ handler mismatches: {handler_mismatches}")
 
@@ -162,7 +162,7 @@ def main():
     doc_set = set(doc_natives)
     if doc_set == reg_set:
         checks_passed += 1
-        print(f"[AP6] PASS: All 19 registered natives are documented in docs/API_REFERENCE.md.")
+        print(f"[AP6] PASS: All 20 registered natives are documented in docs/API_REFERENCE.md.")
     else:
         missing_doc = reg_set - doc_set
         extra_doc = doc_set - reg_set

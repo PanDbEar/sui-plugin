@@ -51,6 +51,7 @@ def resolve_compiler(explicit_path: str = None):
 
     # Common fallback candidate paths
     candidates = [
+        Path(r"C:\Users\alifc\Downloads\Project\Texture Studio\pawno\pawncc.exe"),
         Path("tools/pawn/bin/pawncc"),
         Path("pawno/pawncc.exe"),
         Path(r"C:\pawno\pawncc.exe"),
@@ -74,8 +75,9 @@ def resolve_includes(explicit_path: str = None):
 
     # Common fallback candidate paths
     candidates = [
-        Path("tools/pawn-stdlib"),
+        Path(r"C:\Users\alifc\Downloads\Project\Texture Studio\pawno\include"),
         Path("tools/samp-stdlib"),
+        Path("tools/pawn-stdlib"),
         Path("pawno/include"),
         Path(r"C:\pawno\include"),
         Path(r"C:\samp\pawno\include"),
@@ -126,7 +128,7 @@ def main():
 
     includes_list = []
     if args.includes:
-        for inc_item in re.split(r"[,;:\s]+", args.includes.strip()):
+        for inc_item in [item.strip() for item in args.includes.split(",") if item.strip()]:
             if inc_item and Path(inc_item).exists():
                 includes_list.append(Path(inc_item).resolve())
     else:

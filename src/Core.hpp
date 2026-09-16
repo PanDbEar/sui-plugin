@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include "plugincommon.h"
 #include "amx/amx.h"
@@ -78,6 +79,7 @@ class SUICore {
 public:
     static std::unordered_map<int, PlayerContext> players;
     static std::vector<AMX*> activeAmxInstances;
+    static std::unordered_set<AMX*> ownerCleanupActive;
     static bool debugEnabled;
     static uint64_t nextGroupInstanceId;
 
@@ -87,7 +89,9 @@ public:
     static bool TryAllocateGroupInstanceId(uint64_t& outId);
     static uint64_t AllocateGroupInstanceId();
     static bool IsAmxActive(AMX* amx);
+    static bool IsOwnerCleanupActive(AMX* amx);
     static void UnloadAmx(AMX* amx);
+    static bool CleanupOwnerGroups(AMX* ownerAmx);
 
     static PlayerContext* GetPlayerContext(int playerId);
     static SUIGroup* GetPlayerGroup(int playerId, const std::string& groupName);

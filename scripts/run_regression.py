@@ -15,8 +15,9 @@ Drives live execution of all 11 permanent test suites inside a headless
 9.  show_failure_lifecycle      (10 / 10 PASS)
 10. player_id_validation        (14 / 14 PASS)
 11. api_contract_runtime        (10 / 10 PASS)
+12. amx_unload_cleanup          (14 / 14 PASS)
 
-Total: 151 / 151 PASS across 11 permanent suites.
+Total: 165 / 165 PASS across 12 permanent suites.
 """
 
 import sys
@@ -40,6 +41,7 @@ SUITES = [
     ("show_failure_lifecycle", "show_failure_lifecycle", "", 10, r"ALL SHOW FAILURE LIFECYCLE TESTS PASSED"),
     ("player_id_validation", "player_id_validation", "", 14, r"ALL PLAYER ID VALIDATION TESTS PASSED"),
     ("api_contract_runtime", "api_contract_runtime", "", 10, r"ALL STOCK HELPER CONTRACT TESTS PASSED"),
+    ("amx_unload_cleanup", "owner_cleanup_gamemode", "owner_cleanup_filterscript", 14, r"ALL AMX UNLOAD CLEANUP TESTS PASSED"),
 ]
 
 def find_server_dir(explicit_dir: str = None):
@@ -177,6 +179,10 @@ def main():
             fs_line = f"filterscripts {fs}".strip()
             cfg = re.sub(r"^#?\s*filterscripts.*", fs_line, cfg, flags=re.MULTILINE)
             cfg = re.sub(r"^rcon_password\s+.*", "rcon_password testpass", cfg, flags=re.MULTILINE)
+            if re.search(r"^maxnpc\s+", cfg, flags=re.MULTILINE):
+                cfg = re.sub(r"^maxnpc\s+.*", "maxnpc 10", cfg, flags=re.MULTILINE)
+            else:
+                cfg += "\nmaxnpc 10\n"
 
             # Ensure plugins line contains sui-plugin-legacy.so
             if not re.search(r"^plugins\s+.*sui-plugin-legacy", cfg, flags=re.MULTILINE):
@@ -195,7 +201,12 @@ def main():
             # Spawn samp03svr
             proc = subprocess.Popen(["./samp03svr"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-            suite_timeout = args.timeout if name != "callback_semantics" else 4
+            if name == "callback_semantics":
+                suite_timeout = 4
+            elif name == "amx_unload_cleanup":
+                suite_timeout = max(args.timeout, 15)
+            else:
+                suite_timeout = args.timeout
             start_time = time.time()
             passed = False
 

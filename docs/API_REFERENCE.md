@@ -118,6 +118,42 @@ Performs non-terminal reset of all SUI groups and counters for an active connect
 
 ---
 
+### `SUI_CleanupOwnerGroups`
+```pawn
+native SUI_CleanupOwnerGroups();
+```
+Performs terminal owner-scoped cleanup of all UI groups registered by the calling AMX script across all players.
+- **Calling Context**: Intended to be called in `OnFilterScriptExit()` or `OnGameModeExit()` before the calling script unloads:
+```pawn
+public OnFilterScriptExit()
+{
+    SUI_CleanupOwnerGroups();
+    return 1;
+}
+
+public OnGameModeExit()
+{
+    SUI_CleanupOwnerGroups();
+    return 1;
+}
+```
+- **Lifecycle Guarantees**:
+  - Must be called **BEFORE** owner AMX script unload, while the calling AMX environment is still alive.
+  - Invokes `cbHide` (if visible) followed by `cbDestroy` (if created) for each group owned by the caller.
+  - If `cbHide` fails or is missing, `cbDestroy` is **STILL attempted** in best-effort mode, ensuring external resources have maximum opportunity for release.
+  - Uncreated groups have their registrations removed without invoking callbacks.
+  - Terminally purges all metadata and tracked capacity owned by the calling AMX, preventing accounting leaks.
+  - Does **NOT** remove the calling AMX from `activeAmxInstances`; the calling AMX remains active until the host server issues `AmxUnload`.
+  - Does **NOT** magically destroy external resources unless the registered `cbDestroy` callback performs the actual host destruction (e.g. `PlayerTextDrawDestroy`). Actual plugin `AmxUnload` remains a terminal internal safety net.
+- **Mutation Policy during Cleanup**:
+  - Read-only queries (`SUI_GetActiveTextDrawCount`, `SUI_IsGroupCreated`, `SUI_IsGroupVisible`, `SUI_IsGroupEvictable`, `SUI_PrintPlayerState`) remain functional.
+  - SUI mutation natives called by the owner during cleanup are rejected.
+  - Cross-AMX calls attempting to mutate groups owned by the terminating script are rejected.
+  - Nested calls to `SUI_CleanupOwnerGroups()` are rejected and return `0`.
+- **Returns**: `1` if all callbacks executed successfully or no owned groups existed, `0` if one or more callbacks failed or nested cleanup was rejected.
+
+---
+
 ## 4. Configuration & Capacity Natives
 
 ### `SUI_SetIdleTimeout`

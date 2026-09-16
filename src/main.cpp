@@ -34,6 +34,7 @@ AMX_NATIVE_INFO natives[] = {
     {"SUI_SetGroupEvictable", Natives::SUI_SetGroupEvictable},
     {"SUI_IsGroupEvictable", Natives::SUI_IsGroupEvictable},
     {"SUI_TouchGroup", Natives::SUI_TouchGroup},
+    {"SUI_CleanupOwnerGroups", Natives::SUI_CleanupOwnerGroups},
 
     {nullptr, nullptr}
 };

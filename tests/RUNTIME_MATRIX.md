@@ -19,8 +19,9 @@ This document defines the authoritative configuration, script dependencies, fixt
 | **show_failure_lifecycle** | `show_failure_lifecycle` | *(none)* | *(none)* | 10 | 10 / 10 PASS | Yes |
 | **player_id_validation** | `player_id_validation` | *(none)* | *(none)* | 14 | 14 / 14 PASS | Yes |
 | **api_contract_runtime** | `api_contract_runtime` | *(none)* | *(none)* | 10 | 10 / 10 PASS | Yes |
+| **amx_unload_cleanup** | `owner_cleanup_gamemode` | `owner_cleanup_filterscript` | *(none)* | 14 | 14 / 14 PASS | Yes |
 
-**Total Permanent Suite Pass Rate:** **151 / 151 PASS (100%)**
+**Total Permanent Suite Pass Rate:** **165 / 165 PASS (100%)**
 
 ---
 
@@ -140,6 +141,28 @@ This document defines the authoritative configuration, script dependencies, fixt
   6. Callback Metadata Isolation: Calling `SUI_RegisterGroup` on an already-created group is screened and rejected before registration native is invoked, preserving original callback routing and preventing callback substitution.
 - **Assertions:** AS1–AS10 (10 tests)
 - **Exit Behavior:** Server automatically terminates via RCON upon completing AS10.
+
+### 12. amx_unload_cleanup
+- **Target Issue:** SUI-016 (Owner-AMX Unload External UI Resource Cleanup — Model E)
+- **Gamemode:** `tests/amx_unload_cleanup/owner_cleanup_gamemode.pwn`
+- **Filterscript:** `tests/amx_unload_cleanup/owner_cleanup_filterscript.pwn`
+- **Key Invariants:**
+  1. Visible Created Groups: `cbHide` then `cbDestroy` invoked in strict order; group marked uncreated and hidden; active accounting decremented.
+  2. Hidden Created Groups: `cbHide` skipped; `cbDestroy` invoked; active accounting decremented.
+  3. Uncreated Groups: No lifecycle callbacks invoked; metadata purged cleanly; zero accounting change.
+  4. Mixed Ownership: Cleanup of filterscript groups leaves gamemode groups completely created, visible, and untouched.
+  5. Multi-Player Context: Groups across distinct players cleaned up and purged simultaneously.
+  6. Caller Mutation Reentrancy: All mutating native calls attempted by caller AMX during cleanup callbacks are rejected (return 0).
+  7. Callback Failure Semantics: Callback failures cause `SUI_CleanupOwnerGroups` to return 0, while terminal sweep guarantees metadata purge and accounting repair.
+  8. NPC PlayerTextDraw Handle Reuse: Repeated unload/reload cycles demonstrate exact handle reuse without pool drift or slot creep.
+  9. Nested Cleanup Guard: Calling `SUI_CleanupOwnerGroups` re-entrantly inside an active cleanup callback returns 0.
+  10. Zero Owned Groups: Clean no-op execution returning 1.
+  11. Cross-AMX Target Guard: Foreign AMX mutation attempts targeting a cleanup-active owner's group are rejected by Target-Owner guard (return 0).
+  12. Player Teardown Collision: Player-wide teardown (`SUI_CleanupPlayer`, `SUI_ResetPlayer`) is rejected while player contains a group whose owner is undergoing cleanup (return 0).
+  13. Destroy After Hide Failure: Visible group with failing `cbHide` still attempts and executes `cbDestroy` under terminal best-effort semantics.
+  14. Active AMX Lifetime: Read-only SUI queries execute successfully following `SUI_CleanupOwnerGroups` inside `OnFilterScriptExit`, proving AMX remains registered in `activeAmxInstances` until host `AmxUnload`.
+- **Assertions:** U1–U14 (14 tests)
+- **Exit Behavior:** Server automatically terminates via RCON upon completing U8 final verification.
 
 ---
 

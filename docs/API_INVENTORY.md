@@ -29,6 +29,7 @@
 | `SUI_SetGroupEvictable` | Yes | Yes (`main.cpp:35`) | Yes | Native | Yes (via stock) | Yes | `OK` |
 | `SUI_IsGroupEvictable` | Yes | Yes (`main.cpp:36`) | Yes | Native | No | Yes | `OK` |
 | `SUI_TouchGroup` | Yes | Yes (`main.cpp:37`) | Yes | Native | No | Yes | `OK` |
+| `SUI_CleanupOwnerGroups` | Yes | Yes (`main.cpp:38`) | Yes | Native | No | Yes | `OK` |
 | `SUI_RegisterGroup` | No | No | Yes | Helper Stock | Yes | Yes | `HELPER` |
 | `SUI_PRIORITY_LOW` | Yes (`Core.hpp:9`) | N/A | Yes | Constant (0) | No | Yes | `CONSTANT` |
 | `SUI_PRIORITY_NORMAL` | Yes (`Core.hpp:10`) | N/A | Yes | Constant (1) | Yes (via stock) | Yes | `CONSTANT` |

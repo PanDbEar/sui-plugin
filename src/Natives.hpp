@@ -22,4 +22,5 @@ namespace Natives {
     cell AMX_NATIVE_CALL SUI_SetGroupEvictable(AMX* amx, cell* params);
     cell AMX_NATIVE_CALL SUI_IsGroupEvictable(AMX* amx, cell* params);
     cell AMX_NATIVE_CALL SUI_TouchGroup(AMX* amx, cell* params);
+    cell AMX_NATIVE_CALL SUI_CleanupOwnerGroups(AMX* amx, cell* params);
 }

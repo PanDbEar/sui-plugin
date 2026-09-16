@@ -16,6 +16,12 @@ cell AMX_NATIVE_CALL Natives::SUI_CreatePlayerFactoryGroup(AMX* amx, cell* param
 {
     if (!Utils::CheckParams(params, 6)) return 0;
 
+    if (SUICore::IsOwnerCleanupActive(amx))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_CreatePlayerFactoryGroup rejected: caller amx=%p is in active owner cleanup", amx);
+        return 0;
+    }
+
     int playerId = 0;
     if (!Utils::TryGetPlayerId(params[1], playerId))
     {
@@ -46,6 +52,12 @@ cell AMX_NATIVE_CALL Natives::SUI_ShowGroup(AMX* amx, cell* params)
         return 0;
     }
 
+    if (SUICore::IsOwnerCleanupActive(amx))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_ShowGroup rejected: caller amx=%p is in active owner cleanup", amx);
+        return 0;
+    }
+
     int playerId = 0;
     if (!Utils::TryGetPlayerId(params[1], playerId))
     {
@@ -70,6 +82,12 @@ cell AMX_NATIVE_CALL Natives::SUI_HideGroup(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 2)) return 0;
 
+    if (SUICore::IsOwnerCleanupActive(amx))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_HideGroup rejected: caller amx=%p is in active owner cleanup", amx);
+        return 0;
+    }
+
     int playerId = 0;
     if (!Utils::TryGetPlayerId(params[1], playerId))
     {
@@ -91,6 +109,12 @@ cell AMX_NATIVE_CALL Natives::SUI_HideGroup(AMX* amx, cell* params)
 cell AMX_NATIVE_CALL Natives::SUI_SetIdleTimeout(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 3)) return 0;
+
+    if (SUICore::IsOwnerCleanupActive(amx))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_SetIdleTimeout rejected: caller amx=%p is in active owner cleanup", amx);
+        return 0;
+    }
 
     int playerId = 0;
     if (!Utils::TryGetPlayerId(params[1], playerId))
@@ -121,6 +145,12 @@ cell AMX_NATIVE_CALL Natives::SUI_CleanupPlayer(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 1)) return 0;
 
+    if (SUICore::IsOwnerCleanupActive(amx))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_CleanupPlayer rejected: caller amx=%p is in active owner cleanup", amx);
+        return 0;
+    }
+
     int playerId = 0;
     if (!Utils::TryGetPlayerId(params[1], playerId))
     {
@@ -135,6 +165,12 @@ cell AMX_NATIVE_CALL Natives::SUI_ResetPlayer(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 1)) return 0;
 
+    if (SUICore::IsOwnerCleanupActive(amx))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_ResetPlayer rejected: caller amx=%p is in active owner cleanup", amx);
+        return 0;
+    }
+
     int playerId = 0;
     if (!Utils::TryGetPlayerId(params[1], playerId))
     {
@@ -148,6 +184,12 @@ cell AMX_NATIVE_CALL Natives::SUI_ResetPlayer(AMX* amx, cell* params)
 cell AMX_NATIVE_CALL Natives::SUI_SetGroupSize(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 3)) return 0;
+
+    if (SUICore::IsOwnerCleanupActive(amx))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_SetGroupSize rejected: caller amx=%p is in active owner cleanup", amx);
+        return 0;
+    }
 
     int playerId = 0;
     if (!Utils::TryGetPlayerId(params[1], playerId))
@@ -191,6 +233,12 @@ cell AMX_NATIVE_CALL Natives::SUI_SetMaxTextDraws(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 2)) return 0;
 
+    if (SUICore::IsOwnerCleanupActive(amx))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_SetMaxTextDraws rejected: caller amx=%p is in active owner cleanup", amx);
+        return 0;
+    }
+
     int playerId = 0;
     if (!Utils::TryGetPlayerId(params[1], playerId))
     {
@@ -212,6 +260,12 @@ cell AMX_NATIVE_CALL Natives::SUI_SetEvictionThreshold(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 2)) return 0;
 
+    if (SUICore::IsOwnerCleanupActive(amx))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_SetEvictionThreshold rejected: caller amx=%p is in active owner cleanup", amx);
+        return 0;
+    }
+
     int playerId = 0;
     if (!Utils::TryGetPlayerId(params[1], playerId))
     {
@@ -232,6 +286,12 @@ cell AMX_NATIVE_CALL Natives::SUI_SetEvictionThreshold(AMX* amx, cell* params)
 cell AMX_NATIVE_CALL Natives::SUI_SetGroupPriority(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 3)) return 0;
+
+    if (SUICore::IsOwnerCleanupActive(amx))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_SetGroupPriority rejected: caller amx=%p is in active owner cleanup", amx);
+        return 0;
+    }
 
     int playerId = 0;
     if (!Utils::TryGetPlayerId(params[1], playerId))
@@ -261,6 +321,12 @@ cell AMX_NATIVE_CALL Natives::SUI_SetGroupPriority(AMX* amx, cell* params)
 cell AMX_NATIVE_CALL Natives::SUI_DestroyGroup(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 2)) return 0;
+
+    if (SUICore::IsOwnerCleanupActive(amx))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_DestroyGroup rejected: caller amx=%p is in active owner cleanup", amx);
+        return 0;
+    }
 
     int playerId = 0;
     if (!Utils::TryGetPlayerId(params[1], playerId))
@@ -340,6 +406,12 @@ cell AMX_NATIVE_CALL Natives::SUI_SetGroupEvictable(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 3)) return 0;
 
+    if (SUICore::IsOwnerCleanupActive(amx))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_SetGroupEvictable rejected: caller amx=%p is in active owner cleanup", amx);
+        return 0;
+    }
+
     int playerId = 0;
     if (!Utils::TryGetPlayerId(params[1], playerId))
     {
@@ -385,6 +457,12 @@ cell AMX_NATIVE_CALL Natives::SUI_TouchGroup(AMX* amx, cell* params)
 {
     if (!Utils::CheckParams(params, 2)) return 0;
 
+    if (SUICore::IsOwnerCleanupActive(amx))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_TouchGroup rejected: caller amx=%p is in active owner cleanup", amx);
+        return 0;
+    }
+
     int playerId = 0;
     if (!Utils::TryGetPlayerId(params[1], playerId))
     {
@@ -400,4 +478,18 @@ cell AMX_NATIVE_CALL Natives::SUI_TouchGroup(AMX* amx, cell* params)
     }
 
     return SUICore::TouchGroup(playerId, group) ? 1 : 0;
+}
+
+cell AMX_NATIVE_CALL Natives::SUI_CleanupOwnerGroups(AMX* amx, cell* params)
+{
+    if (!Utils::CheckParams(params, 0)) return 0;
+    if (!amx) return 0;
+
+    if (SUICore::IsOwnerCleanupActive(amx))
+    {
+        SUICore::Debug("[SUI-DEBUG] SUI_CleanupOwnerGroups rejected: nested cleanup already active for amx=%p", amx);
+        return 0;
+    }
+
+    return SUICore::CleanupOwnerGroups(amx) ? 1 : 0;
 }

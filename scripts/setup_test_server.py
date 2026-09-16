@@ -48,7 +48,7 @@ incar_rate 40
 weapon_rate 40
 stream_distance 300.0
 stream_rate 1000
-maxnpc 0
+maxnpc 10
 logtimeformat [%H:%M:%S]
 """
 
@@ -172,6 +172,14 @@ def setup_server(dest_dir: Path, archive_path: Path = None,
             print(f"[PERM] Set executable permissions on {server_bin}.")
         except Exception as e:
             print(f"[PERM] Warning: Could not chmod {server_bin}: {e}")
+
+    npc_bin = dest_dir / "samp-npc"
+    if npc_bin.exists():
+        try:
+            os.chmod(npc_bin, 0o755)
+            print(f"[PERM] Set executable permissions on {npc_bin}.")
+        except Exception as e:
+            print(f"[PERM] Warning: Could not chmod {npc_bin}: {e}")
 
     # Ensure server.cfg has proper configuration and non-default password
     cfg_path = dest_dir / "server.cfg"

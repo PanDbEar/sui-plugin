@@ -86,6 +86,17 @@ native SUI_CleanupPlayer(playerid);
  */
 native SUI_ResetPlayer(playerid);
 
+/**
+ * Cleans up all groups owned by the calling AMX script across all players.
+ * Should be called inside OnFilterScriptExit or OnGameModeExit before the script unloads.
+ * Invokes cbHide (if visible) and cbDestroy (if created) for each group owned by the caller,
+ * purges all internal metadata and accounting for those groups, and leaves the caller AMX
+ * active until host unload.
+ * 
+ * @return 1 if all callbacks completed successfully or no groups were owned, 0 if one or more callbacks failed or nested cleanup was rejected
+ */
+native SUI_CleanupOwnerGroups();
+
 /*
  * ----------------------------------------------------------------------------
  * Configuration & Tuning Natives
