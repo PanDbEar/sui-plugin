@@ -25,7 +25,7 @@
 | **SUI-013** | High | Repo / Git | Repository dependency / nested Git metadata handling | `RESOLVED` | Pre-Release |
 | **SUI-014** | Medium | QA / Tooling | Missing automated tests and CI | `FIXED — Reproducible repository automation and GitHub-hosted CI verified` | Phase 14 / 14.1 / 14.2 |
 | **SUI-015** | Medium | Build / Packaging | Release packaging not yet defined | `FIXED — Deterministic release packaging and distribution contract verified` | Phase 15 |
-| **SUI-016** | Medium | Core / Resource Lifecycle | Owner-unload external UI resource cleanup limitation | `CONFIRMED` | Phase 5 |
+| **SUI-016** | Medium | Core / Resource Lifecycle | Owner-unload external UI resource cleanup limitation | `FIXED — Explicit owner-AMX pre-unload lifecycle cleanup verified` | Phase 16.1 |
 | **SUI-017** | High | Core / Lifecycle / Identity | Re-entrant group replacement / generation identity confusion | `FIXED — runtime regression verified` | Phase 6 |
 | **SUI-018** | Medium | Core / Resource Lifecycle | In-flight callback execution error leaves partial external UI resources in indeterminate state | `CONFIRMED` | Phase 8 |
 
@@ -275,10 +275,20 @@
 - **ID:** SUI-016
 - **Severity:** Medium
 - **Area:** Core / Resource Lifecycle
-- **Status:** CONFIRMED
-- **Current behavior:** When an AMX instance unloads (e.g. `AmxUnload`), SUI purges all internal group state owned by that AMX and repairs `activeTextDrawCount`. However, SUI does not track or manage underlying host SA-MP PlayerTextDraw handles (`PlayerTextDrawDestroy`).
-- **Risk:** In server environments where filterscripts are dynamically reloaded (e.g., administrative script updates or modular gamemode designs), if an unloading script fails to destroy its raw PlayerTextDraw handles in `OnFilterScriptExit`, those IDs remain allocated in the SA-MP host server memory. SA-MP allocates a maximum of 256 PlayerTextDraw IDs per player; repeatedly reloading scripts with unmanaged handles will eventually exhaust player textdraw pools, causing all future UI creation to fail server-wide.
-- **Planned phase:** Phase 5
+- **Status:** FIXED — Explicit owner-AMX pre-unload lifecycle cleanup verified
+- **Fix Summary:**
+  - Implemented Model E (Explicit Owner-AMX Pre-Unload Cleanup) providing `native SUI_CleanupOwnerGroups();` (0 parameters, AMX inferred from caller).
+  - Enables scripts to invoke registered lifecycle callbacks (`cbHide`, `cbDestroy`) while the calling AMX is still fully valid, allowing user code to execute `PlayerTextDrawDestroy` and reclaim host resources before script teardown.
+  - Snapshot ordering: Groups collected across all players owned by caller AMX in deterministic order (`playerId` ascending, `groupName` ascending).
+  - Lifecycle sequencing: Visible created groups invoke `cbHide` then `cbDestroy`; hidden created groups invoke `cbDestroy` only; uncreated groups invoke no callbacks and are directly purged.
+  - Terminal best-effort semantics: If `cbHide` fails or is missing, `cbDestroy` is still attempted to maximize host resource reclamation.
+  - Two-layer guard: Caller-AMX mutation guard in `Natives.cpp` blocks all 13 mutating natives during cleanup callbacks; Target-Owner group guard in `Core.cpp` blocks foreign AMX mutation into groups whose owner is undergoing cleanup.
+  - Player teardown collision protection: `CleanupPlayer` and `ResetPlayer` reject execution while a player context contains groups undergoing owner cleanup.
+  - Eviction exclusion: Groups belonging to cleanup-active AMX are excluded from candidate pools.
+  - Terminal sweep: All owned groups guaranteed erased, active accounting decremented with double-subtraction protection, and caller AMX retained in `activeAmxInstances` until actual SA-MP host `AmxUnload` occurs.
+- **Verification:** Verified across 14 new permanent assertions (U1–U14) in test suite `amx_unload_cleanup`, reaching 165 / 165 PASS across all 12 regression suites. Real connected NPC verified across 3 consecutive unload/reload cycles demonstrating exact PlayerTextDraw handle reuse without pool drift or slot creep. Verified on GitHub Actions hosted CI (Run ID `35042755290`, commit `b2b4967`).
+- **Evidence:** `src/Core.hpp`, `src/Core.cpp`, `src/Natives.hpp`, `src/Natives.cpp`, `src/main.cpp`, `pawn/sui.inc`, `tests/amx_unload_cleanup/`, `tests/RUNTIME_MATRIX.md`.
+- **Planned phase:** Phase 16.1
 
 ---
 
