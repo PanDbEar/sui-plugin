@@ -56,7 +56,6 @@ new g_F10_ReplacementRegistered = 0;
 // F13 state (Untracked local handle limitation)
 new g_F13_CreateFired = 0;
 new g_F13_DestroyFired = 0;
-new g_F13_AllocatedHandleId = -1;
 
 // F14 state (Post-create accounting failure)
 new g_F14_CreateFired = 0;
@@ -408,14 +407,17 @@ public OnF13_Create(playerid)
 {
     g_F13_CreateFired++;
     // Allocate host PlayerTextDraw into local variable ONLY
-    new PlayerText:localHandle = CreatePlayerTextDraw(playerid, 100.0, 100.0, "F13_Untracked");
-    g_F13_AllocatedHandleId = _:localHandle;
-    printf("[F13] OnF13_Create: allocated untracked local handle id=%d", g_F13_AllocatedHandleId);
+    new PlayerText:localHandle =
+        CreatePlayerTextDraw(playerid, 100.0, 100.0, "F13_Untracked");
 
-    // Deliberate AMX runtime error before writing to module cleanup state
-    new z = 0;
-    new v = 10 / z;
-    #pragma unused v, localHandle
+    printf(
+        "[F13] OnF13_Create allocated transient local PlayerTextDraw id=%d",
+        _:localHandle
+    );
+
+    new zero = 0;
+    new value = 10 / zero;
+    #pragma unused value, localHandle
     return 1;
 }
 
@@ -811,31 +813,27 @@ public RunAllRecoveryTests()
     // Now allocate a host probe PlayerTextDraw to observe slot allocation
     new PlayerText:f13_probe1 = CreatePlayerTextDraw(testPid13, 20.0, 20.0, "f13_probe1");
     new f13_probeId = _:f13_probe1;
-    printf("[F13] Limitation observation: baseId=%d, allocatedId=%d, probeId=%d",
-        f13_baseId, g_F13_AllocatedHandleId, f13_probeId);
+    printf("[F13] Limitation observation: baseId=%d, probeId=%d",
+        f13_baseId, f13_probeId);
 
-    // Clean up all knowable handles
+    // Clean up probe handle and group metadata only.
+    // The intentionally untracked transient handle remains allocated until server exit.
     PlayerTextDrawDestroy(testPid13, f13_probe1);
-    if (g_F13_AllocatedHandleId != -1)
-    {
-        PlayerTextDrawDestroy(testPid13, PlayerText:g_F13_AllocatedHandleId);
-    }
     SUI_DestroyGroup(testPid13, "f13_grp");
 
-    // On SA-MP 0.3.7-R2 host, probeId > g_F13_AllocatedHandleId (the slot remained retained by the host)
+    // On SA-MP 0.3.7-R2 host, probeId > f13_baseId (the slot remained retained by the host)
     if (f13_showRes == 0 &&
         g_F13_CreateFired == 1 &&
         g_F13_DestroyFired == 1 &&
-        g_F13_AllocatedHandleId != -1 &&
-        f13_probeId > g_F13_AllocatedHandleId)
+        f13_probeId > f13_baseId)
     {
         g_test_f13_pass = 1;
         print("[TEST-F13] PASS: Untracked local handle limitation reproduced; host retained un-freed handle slot.");
     }
     else
     {
-        printf("[TEST-F13] FAIL: showRes=%d createFired=%d destroyFired=%d allocId=%d probeId=%d",
-            f13_showRes, g_F13_CreateFired, g_F13_DestroyFired, g_F13_AllocatedHandleId, f13_probeId);
+        printf("[TEST-F13] FAIL: showRes=%d createFired=%d destroyFired=%d baseId=%d probeId=%d",
+            f13_showRes, g_F13_CreateFired, g_F13_DestroyFired, f13_baseId, f13_probeId);
     }
 
     // ==============================================================
