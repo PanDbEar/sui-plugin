@@ -142,12 +142,16 @@ def main():
         print("Please provide --includes <path>, set SAMP_INCLUDE_PATH environment variable, or place standard includes in pawno/include.")
         return 2
 
-    # Prepare environment with LD_LIBRARY_PATH if needed for Linux pawncc
+    # Prepare environment with LD_LIBRARY_PATH if needed for Linux pawncc, or PATH for Windows pawncc
     proc_env = os.environ.copy()
     potential_lib = compiler.parent.parent / "lib"
     if potential_lib.exists() and (potential_lib / "libpawnc.so").exists():
         existing_ld = proc_env.get("LD_LIBRARY_PATH", "")
         proc_env["LD_LIBRARY_PATH"] = f"{potential_lib}:{existing_ld}" if existing_ld else str(potential_lib)
+
+    if sys.platform == "win32" or os.name == "nt":
+        existing_path = proc_env.get("PATH", "")
+        proc_env["PATH"] = f"{compiler.parent};{existing_path}"
 
     output_dir = Path(args.output_dir).resolve() if args.output_dir else None
     if output_dir:
@@ -222,7 +226,8 @@ def main():
                 print(f"[PASS] {str(rel):52s} 0 errors, 0 warnings")
                 passed_count += 1
             else:
-                print(f"[FAIL] {str(rel):52s}")
+                ret_str = f" (exit code: {res.returncode})" if res.returncode != 0 else ""
+                print(f"[FAIL] {str(rel):52s}{ret_str}")
                 print("--- Output ---")
                 print(output.strip())
                 print("--------------")

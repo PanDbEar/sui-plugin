@@ -283,6 +283,19 @@ jobs:
           fi
           echo "Static CRT (/MT) verified: Zero dynamic MSVC runtime dependencies."
 
+      - name: Install MSVC 2010 x86 Redistributable (Pawn compiler dependency)
+        run: |
+          set -euo pipefail
+          echo "Downloading MSVC 2010 x86 Redistributable from Microsoft..."
+          VCREDIST_URL="https://download.microsoft.com/download/1/6/5/165255E7-1014-4D0A-B094-B6A430A6BFFC/vcredist_x86.exe"
+          VCREDIST_SHA256="99dce3c841cc6028560830f7866c9ce2928c98cf3256892ef8e6cf755147b0d8"
+          curl -sSL "$VCREDIST_URL" -o vcredist_x86.exe
+          echo "$VCREDIST_SHA256 *vcredist_x86.exe" | sha256sum -c -
+          echo "Installing MSVC 2010 x86 Redistributable..."
+          powershell -Command "Start-Process -FilePath '.\vcredist_x86.exe' -ArgumentList '/q /norestart' -Wait"
+          rm -f vcredist_x86.exe
+          echo "MSVC 2010 x86 Redistributable installed successfully."
+
       - name: Setup Pinned Windows Pawn Compiler & Standard Includes
         run: |
           set -euo pipefail

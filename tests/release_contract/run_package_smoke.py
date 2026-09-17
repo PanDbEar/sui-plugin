@@ -217,12 +217,16 @@ def main():
 
     compile_cmd.extend(["-d3", "-p:", "-w239"])
 
-    # Prepare environment with LD_LIBRARY_PATH if needed for Linux pawncc
+    # Prepare environment with LD_LIBRARY_PATH if needed for Linux pawncc, or PATH for Windows pawncc
     proc_env = os.environ.copy()
     potential_lib = compiler_path.parent.parent / "lib"
     if potential_lib.exists() and (potential_lib / "libpawnc.so").exists():
         existing_ld = proc_env.get("LD_LIBRARY_PATH", "")
         proc_env["LD_LIBRARY_PATH"] = f"{potential_lib}:{existing_ld}" if existing_ld else str(potential_lib)
+
+    if sys.platform == "win32" or os.name == "nt":
+        existing_path = proc_env.get("PATH", "")
+        proc_env["PATH"] = f"{compiler_path.parent};{existing_path}"
 
     print(f"[COMPILE] Compiling smoke fixture with strictly package-isolated include:")
     print(f"          Command: {' '.join(compile_cmd)}")

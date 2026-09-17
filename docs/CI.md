@@ -72,9 +72,10 @@ SA-MP server binaries are not stored in this repository and are acquired externa
 | **`samp-stdlib`** | `pawn-lang/samp-stdlib` | Tag `0.3.7-R2-1-1` (Commit `7b194986946f64e8c0a4d4223aafec704ffd6b88`) | Tag & Commit SHA | Apache-2.0 |
 | **SA-MP Server Archive (Linux)** | Community preservation archive (`samp037svr_R2-1.tar.gz`) | Version `0.3.7-R2-1` | SHA-256 `f8ead0b15683fc34f13a7a84ba9ea7252b17c5e3161d8255364e1abedd697a53` | SA-MP EULA (External) |
 | **SA-MP Server Archive (Windows)** | Community preservation archive (`samp037_svr_R2-1-1_win32.zip`) | Version `0.3.7-R2-1-1` | SHA-256 `e12e7483d4df0349f52e2c5f47d6afd3f782acbc2bbb19fa61adced3bfff2d90` | SA-MP EULA (External) |
+| **MSVC 2010 x86 Redistributable** | Microsoft Official CDN (`vcredist_x86.exe`) | Version `10.0.40219.1` | SHA-256 `99dce3c841cc6028560830f7866c9ce2928c98cf3256892ef8e6cf755147b0d8` | Microsoft Software License |
 
 ### Provenance Details
-- **Pawn Compiler**: Pinned to `v3.10.10` release assets from `pawn-lang/compiler` (Linux tarball and Windows zip). The license distributed in that repository is `zlib/libpng` (per upstream `license.txt`). Archives are verified against SHA-256 checksums before extraction.
+- **Pawn Compiler**: Pinned to `v3.10.10` release assets from `pawn-lang/compiler` (Linux tarball and Windows zip). The license distributed in that repository is `zlib/libpng` (per upstream `license.txt`). Archives are verified against SHA-256 checksums before extraction. On Windows, the official Microsoft Visual C++ 2010 x86 Redistributable (`vcredist_x86.exe`) is pinned and installed to satisfy `pawncc.exe` runtime linkage to `MSVCR100.dll`.
 - **Pawn Standard Libraries**: Both `pawn-stdlib` and `samp-stdlib` are pinned to immutable commit SHAs. `samp-stdlib` is locked to release tag `0.3.7-R2-1-1`, matching the SA-MP 0.3.7-R2 target.
 - **SA-MP Server Acquisition**: Headless server packages are downloaded dynamically via `scripts/setup_test_server.py` from pinned preservation mirrors. SHA-256 hashes are computed and compared against pinned expected hashes before extraction. If hashes do not match, setup aborts immediately. Safe extraction enforces path traversal checks on every member.
 
