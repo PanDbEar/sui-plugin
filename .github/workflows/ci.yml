@@ -294,8 +294,13 @@ jobs:
           echo "Verifying Pawn compiler SHA-256..."
           echo "$PAWN_SHA256 *pawnc.zip" | sha256sum -c -
           unzip -q pawnc.zip -d tools/pawn_tmp
-          cp -r tools/pawn_tmp/bin tools/pawn/
-          cp -r tools/pawn_tmp/include tools/pawn/ || true
+          mkdir -p tools/pawn/bin
+          if [ -d "tools/pawn_tmp/bin" ]; then
+            cp -r tools/pawn_tmp/bin/* tools/pawn/bin/
+          else
+            cp -r tools/pawn_tmp/*/bin/* tools/pawn/bin/
+          fi
+          ls -la tools/pawn/bin/
           rm -rf pawnc.zip tools/pawn_tmp
 
           echo "Checking out pawn-stdlib at pinned commit e96507d9a6ddaae5bb0f3ec31479ba805aeff964..."
