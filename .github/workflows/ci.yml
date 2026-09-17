@@ -184,7 +184,7 @@ jobs:
           path: |
             dist/sui-plugin-0.0.0-test-linux-x86.tar.gz
             dist/sui-plugin-0.0.0-test-linux-x86.zip
-            dist/sui-plugin-0.0.0-test-SHA256SUMS.txt
+            dist/sui-plugin-0.0.0-test-linux-x86-SHA256SUMS.txt
           if-no-files-found: error
 
       - name: Disposable Runtime Cleanup
@@ -395,7 +395,7 @@ jobs:
           path: |
             dist/sui-plugin-0.0.0-test-windows-x86.tar.gz
             dist/sui-plugin-0.0.0-test-windows-x86.zip
-            dist/sui-plugin-0.0.0-test-SHA256SUMS.txt
+            dist/sui-plugin-0.0.0-test-windows-x86-SHA256SUMS.txt
           if-no-files-found: error
 
       - name: Disposable Runtime Cleanup

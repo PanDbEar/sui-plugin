@@ -199,7 +199,7 @@ def main():
     package_root_name = f"sui-plugin-{version}"
     tar_name = f"sui-plugin-{version}-{platform}.tar.gz"
     zip_name = f"sui-plugin-{version}-{platform}.zip"
-    outer_manifest_name = f"sui-plugin-{version}-SHA256SUMS.txt"
+    outer_manifest_name = f"sui-plugin-{version}-{platform}-SHA256SUMS.txt"
 
     tar_path = dist_dir / tar_name
     zip_path = dist_dir / zip_name

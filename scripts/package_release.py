@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-SUI Deterministic Release Packager (SUI-015 - Draft CI Test Infrastructure)
+SUI Deterministic Cross-Platform Release Packager (SUI-015)
 
-NOTE: This script produces non-official CI test packages for structural verification.
-It does NOT produce official releases. Official distribution is BLOCKED pending
-the project owner's licensing decision.
+Assembles reproducible, platform-specific release packages for SUI:
+- linux-x86: ELF32 (Intel 80386 DYN) shared object (sui-plugin-legacy.so)
+- windows-x86: PE32 (Intel 386 DLL) dynamically linked library (sui-plugin-legacy.dll)
 
-Assembles the legacy Linux x86 release package layout for SUI:
-1. Validates binary architecture (ELF32, Intel 80386, DYN) and canonical exports.
+Verification and packaging stages:
+1. Validates binary architecture (ELF32/Intel 80386 or PE32/Intel 386) and canonical exports.
 2. Creates package layout under root: sui-plugin-<VERSION>/
-3. Copies allowlisted deployment assets.
-4. Generates deterministic BUILD_INFO.txt metadata file.
-5. Generates internal SHA256SUMS manifest.
-6. Packages sui-plugin-<VERSION>-linux-x86.tar.gz (normalized permissions & gzip mtime).
-7. Packages sui-plugin-<VERSION>-linux-x86.zip (normalized POSIX paths & ZipInfo timestamps).
-8. Generates outer sui-plugin-<VERSION>-SHA256SUMS.txt manifest.
+3. Copies allowlisted deployment assets (include, example, docs, README, CHANGELOG, LICENSE).
+4. Generates deterministic BUILD_INFO.txt traceability metadata file.
+5. Generates internal SHA256SUMS manifest of all packaged files.
+6. Packages sui-plugin-<VERSION>-<PLATFORM>.tar.gz (normalized permissions & gzip mtime).
+7. Packages sui-plugin-<VERSION>-<PLATFORM>.zip (normalized POSIX paths & ZipInfo timestamps).
+8. Generates outer platform-qualified sui-plugin-<VERSION>-<PLATFORM>-SHA256SUMS.txt manifest.
 """
 
 import argparse
@@ -499,7 +499,7 @@ def main():
     output_dir = (repo_root / args.output_dir).resolve()
 
     print("==================================================")
-    print(" SUI RELEASE PACKAGER (DRAFT CI TEST INFRASTRUCTURE)")
+    print(" SUI DETERMINISTIC RELEASE PACKAGER (SUI-015)")
     print("==================================================")
     print(f"Target Platform:   {platform}")
 
@@ -570,7 +570,7 @@ def main():
     # 8. Generate outer SHA256SUMS manifest
     tar_hash = compute_sha256(tar_path)
     zip_hash = compute_sha256(zip_path)
-    outer_manifest_filename = f"sui-plugin-{version}-SHA256SUMS.txt"
+    outer_manifest_filename = f"sui-plugin-{version}-{platform}-SHA256SUMS.txt"
     outer_manifest_path = output_dir / outer_manifest_filename
     outer_content = f"{tar_hash}  {tar_filename}\n{zip_hash}  {zip_filename}\n"
     outer_manifest_path.write_text(outer_content, encoding="utf-8")
@@ -584,7 +584,7 @@ def main():
         print(f"[OK] Cleaned up temporary staging tree: {staging_dir.name}")
 
     print("==================================================")
-    print(" SUI TEST PACKAGE GENERATION COMPLETED           ")
+    print(" SUI PACKAGE GENERATION COMPLETED                 ")
     print("==================================================")
 
 

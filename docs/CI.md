@@ -148,7 +148,7 @@ Layer C verifies actual plugin behavior within genuine 32-bit SA-MP dedicated se
 ### Layer D — Release Packaging & Deployment Verification
 Layer D verifies that distributed prebuilt archives conform to the distribution specification and boot cleanly in an isolated downstream server environment without access to repository source code.
 - **Deterministic Packaging (`scripts/package_release.py --platform <target>`)**:
-  - Produces byte-reproducible `.tar.gz` and `.zip` archives with outer `SHA256SUMS.txt` using `SOURCE_DATE_EPOCH`.
+  - Produces byte-reproducible `.tar.gz` and `.zip` archives with outer platform-qualified `sui-plugin-<VERSION>-<PLATFORM>-SHA256SUMS.txt` using `SOURCE_DATE_EPOCH`.
   - Embeds mandatory `LICENSE`, documentation, include header, example, and `BUILD_INFO.txt`.
 - **Package Contract Audit (`tests/release_contract/check_release_package.py`)**:
   - Validates all 12 distribution contracts (PK1–PK12 = 12 / 12 PASS): archive presence, file structure, binary architecture (ELF32 on Linux, PE32 on Windows), public header equality, checksum manifest integrity, permissions, and strict exclusion of internal files (`src/`, `tests/`, `.git/`, `.github/`).
