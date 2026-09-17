@@ -1,6 +1,6 @@
 # SUI v1.1.0 Release Notes
 
-**Release Version:** 1.1.0  
+**Release Version:** `v1.1.0`  
 **Target Platforms:**
 - SA-MP 0.3.7-R2 Dedicated Server (Linux x86 / ELF32 / Intel 80386)
 - SA-MP 0.3.7-R2 Dedicated Server (Windows x86 / PE32 / Intel 386 / Win32)  
