@@ -257,11 +257,12 @@ jobs:
       - name: Layer B — Verify Canonical Exports via dumpbin
         run: |
           set -euo pipefail
+          export MSYS_NO_PATHCONV=1
           DUMPBIN=$(vswhere.exe -latest -find "VC/Tools/MSVC/*/bin/Hostx64/x86/dumpbin.exe" | head -n 1)
           echo "Using dumpbin: $DUMPBIN"
-          "$DUMPBIN" /exports build/Release/sui-plugin-legacy.dll
+          "$DUMPBIN" -exports build/Release/sui-plugin-legacy.dll
           for sym in Supports Load Unload AmxLoad AmxUnload ProcessTick; do
-            if ! "$DUMPBIN" /exports build/Release/sui-plugin-legacy.dll | grep -E "[[:space:]]${sym}$"; then
+            if ! "$DUMPBIN" -exports build/Release/sui-plugin-legacy.dll | grep -E "[[:space:]]${sym}$"; then
               echo "ERROR: Missing required canonical plugin export: ${sym}"
               exit 1
             fi
@@ -272,8 +273,9 @@ jobs:
       - name: Layer B — Audit Runtime Dependencies (/MT static CRT verification)
         run: |
           set -euo pipefail
+          export MSYS_NO_PATHCONV=1
           DUMPBIN=$(vswhere.exe -latest -find "VC/Tools/MSVC/*/bin/Hostx64/x86/dumpbin.exe" | head -n 1)
-          "$DUMPBIN" /dependents build/Release/sui-plugin-legacy.dll > dependents.txt
+          "$DUMPBIN" -dependents build/Release/sui-plugin-legacy.dll > dependents.txt
           cat dependents.txt
           if grep -iE "msvcp|vcruntime" dependents.txt; then
             echo "ERROR: Found dynamic MSVC CRT dependency! Plugin must be statically linked with /MT."
