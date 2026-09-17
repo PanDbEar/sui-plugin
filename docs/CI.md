@@ -1,16 +1,18 @@
 # SUI — Continuous Integration & Test Automation Architecture
 
-**Document Version:** 1.0.0 (v1.0.0 Release Baseline)  
+**Document Version:** 1.1.0 (Phase 19 Multi-Platform Architecture Baseline)  
 **Author:** SUI Engineering  
-**Scope:** Automated testing gates, multi-tier evidence layers, toolchain provenance, and local replication.
+**Scope:** Automated testing gates, multi-tier evidence layers, toolchain provenance, cross-platform runners, and local replication.
 
 ---
 
 ## 1. System Overview
 
-To guarantee long-term regression safety without weakening platform constraints (Linux x86 ELF32, `-m32`), SUI establishes a reproducible, repository-owned test automation framework and continuous integration pipeline.
+To guarantee long-term regression safety without weakening platform constraints, SUI establishes a reproducible, repository-owned test automation framework and continuous integration pipeline across both supported SA-MP server platforms:
+- **Linux x86:** 32-bit ELF, multilib GCC (`-m32`), dedicated headless server (`samp03svr`).
+- **Windows x86:** 32-bit PE DLL (Win32), MSVC static CRT (`/MT`), dedicated server (`samp-server.exe`).
 
-The CI architecture strictly separates verification into **Four Distinct Evidence Layers**, preventing the conflation of static syntax checks, binary build verification, live server runtime regressions, and release packaging mechanics.
+The CI architecture strictly separates verification into **Four Distinct Evidence Layers** across independent platform jobs (`linux-x86-gates` and `windows-x86-gates`), preventing the conflation of static syntax checks, binary build verification, live server runtime regressions, and release packaging mechanics.
 
 ```text
 +-------------------------------------------------------------------------+
@@ -21,27 +23,29 @@ The CI architecture strictly separates verification into **Four Distinct Evidenc
 |  ├── API Surface Checker (tests/api_contract/check_api_surface.py)      |
 |  │   └── 7 / 7 PASS (20 C++ Natives, 1 Stock Helper, 100% Synced)       |
 |  └── Repo Surface Checker (tests/repo_contract/check_source_surface.py) |
-|      └── 6 / 6 PASS (6 Canonical Files, 3 C++ Units, 0 Leaks)           |
+|      └── 6 / 6 PASS (7 Canonical Files, 3 C++ Units, 0 Leaks)           |
 |                                                                         |
 |  [ LAYER B ] Build & Compilation Contract Gates                         |
-|  ├── 32-bit Multilib Shared Object Build (gcc -m32, Release)            |
-|  ├── Binary Architecture Verification (ELF32, Intel 80386, DYN)         |
-|  ├── Canonical C Plugin Export Audit (All 6 Canonical Exports Present)  |
+|  ├── Binary Compilation:                                                |
+|  │   ├── Linux x86: gcc -m32 Release -> sui-plugin-legacy.so (ELF32)    |
+|  │   └── Windows x86: MSVC Win32 /MT -> sui-plugin-legacy.dll (PE32)    |
+|  ├── Binary Architecture & Export Audits (ELF32/PE32, 6 Exports)        |
 |  └── Pawn Fixture Compilation Audit (scripts/compile_pawn.py --check)   |
 |      └── 23 / 23 PASS (0 errors, 0 warnings under -w239)                |
 |                                                                         |
 |  [ LAYER C ] Live Runtime Regression Gates                              |
-|  ├── Headless SA-MP 0.3.7-R2 Linux Dedicated Server (samp03svr)         |
+|  ├── Headless SA-MP 0.3.7-R2 Dedicated Server (samp03svr / exe)         |
 |  ├── Dynamic Fixture Deployment (gamemodes/ & filterscripts/)           |
 |  └── 13 Permanent Regression Test Suites (scripts/run_regression.py)    |
-|      └── 179 / 179 PASS (100% Runtime Assertion Baseline)               |
+|      ├── Linux x86:   179 / 179 PASS (100% Runtime Assertion Baseline)  |
+|      └── Windows x86: 179 / 179 PASS (100% Runtime Assertion Baseline)  |
 |                                                                         |
 |  [ LAYER D ] Release Packaging & Package-Only Deployment Gates          |
-|  ├── Deterministic Packager (scripts/package_release.py)                |
+|  ├── Deterministic Packager (scripts/package_release.py --platform)     |
 |  ├── Release Contract Checker (tests/release_contract/check_release)   |
 |  │   └── 12 / 12 PASS (PK1–PK12 Distribution Integrity Verification)    |
 |  └── Package Deployment Smoke Test (tests/release_contract/run_smoke)   |
-|      └── Isolated Server Boot with Packaged .so + sui.inc Only (PASS)   |
+|      └── Isolated Server Boot with Packaged Binary + sui.inc Only (PASS)|
 |                                                                         |
 +-------------------------------------------------------------------------+
 ```
@@ -62,15 +66,17 @@ SA-MP server binaries are not stored in this repository and are acquired externa
 | **`actions/setup-python`** | GitHub Actions | `42375524e23c412d93fb67b49958b491fce71c38` (v5.4.0) | Commit SHA | MIT |
 | **`actions/upload-artifact`** | GitHub Actions | `ea165f8d65b6e75b540449e92b4886f43607fa02` (v4.6.1) | Commit SHA | MIT |
 | **`samp-plugin-sdk`** | Tracked Git Submodule (`lib/samp-plugin-sdk`) | Commit `a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5` | Submodule Commit SHA | zlib/libpng |
-| **Pawn Compiler (`pawncc`)** | `pawn-lang/compiler` Linux release asset | Release `v3.10.10` | SHA-256 `9bbb1df6e933318fce1fa61951e4196b70613c637a5a1d4c96937e147c18468d` | zlib/libpng |
+| **Pawn Compiler (Linux)** | `pawn-lang/compiler` Linux release asset | Release `v3.10.10` | SHA-256 `9bbb1df6e933318fce1fa61951e4196b70613c637a5a1d4c96937e147c18468d` | zlib/libpng |
+| **Pawn Compiler (Windows)** | `pawn-lang/compiler` Windows release asset | Release `v3.10.10` | SHA-256 `14a94e93f0e05443752b9925d69f76c07db7970eaa4dfb175cde01c74451c2fe` | zlib/libpng |
 | **`pawn-stdlib`** | `pawn-lang/pawn-stdlib` | Commit `e96507d9a6ddaae5bb0f3ec31479ba805aeff964` | Commit SHA | Apache-2.0 |
 | **`samp-stdlib`** | `pawn-lang/samp-stdlib` | Tag `0.3.7-R2-1-1` (Commit `7b194986946f64e8c0a4d4223aafec704ffd6b88`) | Tag & Commit SHA | Apache-2.0 |
-| **SA-MP Server Archive (`samp03svr`)** | Community preservation archive (overridable) | Version `0.3.7-R2-1` (`samp037svr_R2-1.tar.gz`) | SHA-256 `f8ead0b15683fc34f13a7a84ba9ea7252b17c5e3161d8255364e1abedd697a53` | SA-MP EULA (External) |
+| **SA-MP Server Archive (Linux)** | Community preservation archive (`samp037svr_R2-1.tar.gz`) | Version `0.3.7-R2-1` | SHA-256 `f8ead0b15683fc34f13a7a84ba9ea7252b17c5e3161d8255364e1abedd697a53` | SA-MP EULA (External) |
+| **SA-MP Server Archive (Windows)** | Community preservation archive (`samp037_svr_R2-1-1_win32.zip`) | Version `0.3.7-R2-1-1` | SHA-256 `e12e7483d4df0349f52e2c5f47d6afd3f782acbc2bbb19fa61adced3bfff2d90` | SA-MP EULA (External) |
 
 ### Provenance Details
-- **Pawn Compiler**: Pinned to `v3.10.10` release tarball from `pawn-lang/compiler`. The license distributed in that repository is `zlib/libpng` (per upstream `license.txt`). The compiler archive is verified against its SHA-256 checksum before extraction.
+- **Pawn Compiler**: Pinned to `v3.10.10` release assets from `pawn-lang/compiler` (Linux tarball and Windows zip). The license distributed in that repository is `zlib/libpng` (per upstream `license.txt`). Archives are verified against SHA-256 checksums before extraction.
 - **Pawn Standard Libraries**: Both `pawn-stdlib` and `samp-stdlib` are pinned to immutable commit SHAs. `samp-stdlib` is locked to release tag `0.3.7-R2-1-1`, matching the SA-MP 0.3.7-R2 target.
-- **SA-MP Server Acquisition**: The headless server package is downloaded dynamically via `scripts/setup_test_server.py` from a community preservation mirror. Its SHA-256 hash is computed and compared against the pinned expected hash before extraction. If the hash does not match, setup aborts immediately. The source can be overridden using `--archive-url` or `SAMP_SERVER_ARCHIVE_URL` and `--archive-sha256` or `SAMP_SERVER_ARCHIVE_SHA256`. Safe extraction enforces path traversal checks on every member.
+- **SA-MP Server Acquisition**: Headless server packages are downloaded dynamically via `scripts/setup_test_server.py` from pinned preservation mirrors. SHA-256 hashes are computed and compared against pinned expected hashes before extraction. If hashes do not match, setup aborts immediately. Safe extraction enforces path traversal checks on every member.
 
 ---
 
@@ -89,23 +95,27 @@ Layer A verifies that the repository source tree, header declarations, public Pa
 - **`tests/repo_contract/check_source_surface.py` (6 / 6 PASS)**:
   - `RC1`: All `src/*.cpp` files listed in `CMakeLists.txt:SOURCES` (3 project translation units: `Core.cpp`, `Natives.cpp`, `main.cpp`).
   - `RC2`: Zero banned includes (`Component.hpp`, `Compat.hpp`, `<sdk.hpp>`).
-  - `RC3`: Directory `src/` contains exactly the canonical 6 files (`Core.cpp`, `Core.hpp`, `main.cpp`, `Natives.cpp`, `Natives.hpp`, `Utils.hpp`).
+  - `RC3`: Directory `src/` contains exactly the canonical 7 files (`Core.cpp`, `Core.hpp`, `main.cpp`, `Natives.cpp`, `Natives.hpp`, `sui-plugin-legacy.def`, `Utils.hpp`).
   - `RC4`: All CMake source paths exist on disk.
   - `RC5`: Complete absence of orphaned component prototypes.
   - `RC6`: Portable automation path contract (zero developer-specific path literals).
 
 ### Layer B — Build & Compilation Contract
 Layer B verifies that the plugin compiles cleanly under strict platform constraints and that all Pawn code compiles with zero errors and zero emitted warnings under the pinned CI warning policy (`-w239`).
-- **C++ Shared Library**:
+- **Linux x86 Shared Library (`sui-plugin-legacy.so`)**:
   - Compiled with `-m32` targeting Linux x86 (32-bit ELF, Intel 80386, DYN shared object file).
   - Validated via `file` and `readelf -h`.
   - Dynamic export validation via `nm -D` asserting that all six canonical SA-MP plugin entry points are present:
-    - `Supports`
-    - `Load`
-    - `Unload`
-    - `AmxLoad`
-    - `AmxUnload`
-    - `ProcessTick`
+    - `Supports`, `Load`, `Unload`, `AmxLoad`, `AmxUnload`, `ProcessTick`
+- **Windows x86 Shared Library (`sui-plugin-legacy.dll`)**:
+  - Compiled with MSVC x86 (`-A Win32`, `/MT` static C/C++ runtime).
+  - Validated via `tests/platform_contract/check_windows_binary.py` enforcing:
+    - Valid DOS MZ and PE header signatures
+    - Machine type `IMAGE_FILE_MACHINE_I386` (0x014c)
+    - 32-bit PE format (`Magic` 0x010b, strictly rejecting 64-bit PE32+)
+    - DLL characteristics (`IMAGE_FILE_DLL` 0x2000)
+    - Export directory parsing verifying all 6 canonical exports (`Supports`, `Load`, `Unload`, `AmxLoad`, `AmxUnload`, `ProcessTick`)
+  - Audited via `dumpbin /dependents` in CI to ensure zero dynamic MSVC runtime dependencies (`MSVCP140.dll`, `VCRUNTIME140.dll`).
 - **Pawn Fixture Compilation**:
   - Executed via repository-owned tool `scripts/compile_pawn.py --check-only`.
   - Verifies all 23 Pawn files (1 shipped example + 22 regression test fixtures).
@@ -114,8 +124,8 @@ Layer B verifies that the plugin compiles cleanly under strict platform constrai
   - Immediately purges generated `.amx` binaries to preserve repository hygiene.
 
 ### Layer C — Live Runtime Regression
-Layer C verifies actual plugin behavior within a genuine 32-bit Linux SA-MP dedicated server (`samp03svr`).
-- **Orchestration**: Executed via repository-owned tool `scripts/run_regression.py`.
+Layer C verifies actual plugin behavior within genuine 32-bit SA-MP dedicated servers (`samp03svr` on Linux, `samp-server.exe` on Windows).
+- **Orchestration**: Executed via repository-owned cross-platform runner `scripts/run_regression.py`.
 - **Permanent Suites Tested (13 Suites, 179 Assertions)**:
   1. `reentrancy_regression`: 10 / 10 PASS (R1–R10)
   2. `amx_ownership`: 7 / 7 PASS (A1–A7)
@@ -130,19 +140,21 @@ Layer C verifies actual plugin behavior within a genuine 32-bit Linux SA-MP dedi
   11. `api_contract_runtime`: 10 / 10 PASS (AS1–AS10)
   12. `amx_unload_cleanup`: 14 / 14 PASS (U1–U14)
   13. `callback_error_recovery`: 14 / 14 PASS (F1–F14)
-- **Cumulative Assertion Requirement**: **179 / 179 PASS (100%)**.
+- **Cumulative Assertion Requirement**:
+  - **Linux x86**: **179 / 179 PASS (100%)**
+  - **Windows x86**: **179 / 179 PASS (100%)**
 
 ### Layer D — Release Packaging & Deployment Verification
-Layer D verifies that the distributed prebuilt archives conform to the distribution specification and boot cleanly in an isolated downstream server environment without access to repository source code.
-- **Deterministic Packaging (`scripts/package_release.py`)**:
-  - Produces byte-reproducible `.tar.gz`, `.zip`, and `SHA256SUMS.txt` using `SOURCE_DATE_EPOCH`.
+Layer D verifies that distributed prebuilt archives conform to the distribution specification and boot cleanly in an isolated downstream server environment without access to repository source code.
+- **Deterministic Packaging (`scripts/package_release.py --platform <target>`)**:
+  - Produces byte-reproducible `.tar.gz` and `.zip` archives with outer `SHA256SUMS.txt` using `SOURCE_DATE_EPOCH`.
   - Embeds mandatory `LICENSE`, documentation, include header, example, and `BUILD_INFO.txt`.
 - **Package Contract Audit (`tests/release_contract/check_release_package.py`)**:
-  - Validates all 12 distribution contracts (PK1–PK12 = 12 / 12 PASS): archive presence, file structure, ELF32 binary architecture, public header equality, checksum manifest integrity, permissions, and strict exclusion of internal files (`src/`, `tests/`, `.git/`, `.github/`).
+  - Validates all 12 distribution contracts (PK1–PK12 = 12 / 12 PASS): archive presence, file structure, binary architecture (ELF32 on Linux, PE32 on Windows), public header equality, checksum manifest integrity, permissions, and strict exclusion of internal files (`src/`, `tests/`, `.git/`, `.github/`).
 - **Package Deployment Smoke Test (`tests/release_contract/run_package_smoke.py`)**:
-  - Extracts the distribution archive into an isolated test environment without repository fallbacks.
-  - Compiles `tests/release_contract/package_smoke.pwn` using the extracted `sui.inc`.
-  - Boots headless SA-MP server loading the extracted `sui-plugin-legacy.so`.
+  - Extracts distribution archive into an isolated test environment without repository fallbacks.
+  - Compiles `tests/release_contract/package_smoke.pwn` using extracted `sui.inc`.
+  - Boots headless SA-MP server loading the extracted plugin binary (`sui-plugin-legacy.so` or `sui-plugin-legacy.dll`).
   - Asserts successful initialization, AMX native binding, and graceful server shutdown.
 
 ---
@@ -170,9 +182,11 @@ python3 scripts/compile_pawn.py \
 ```
 
 ### Running Layer C (Full Runtime Regression)
+
+#### Linux / WSL:
 1. **Provision Server**:
    ```bash
-   python3 scripts/setup_test_server.py --dest test-server
+   python3 scripts/setup_test_server.py --platform linux-x86 --dest test-server
    ```
 2. **Build Plugin**:
    ```bash
@@ -189,74 +203,92 @@ python3 scripts/compile_pawn.py \
    ```
 4. **Execute Regression Suites**:
    ```bash
-   python3 scripts/run_regression.py --server-dir test-server
+   python3 scripts/run_regression.py --platform linux-x86 --server-dir test-server
+   ```
+
+#### Windows:
+1. **Provision Server**:
+   ```powershell
+   py scripts/setup_test_server.py --platform windows-x86 --dest test-server
+   ```
+2. **Build Plugin**:
+   ```powershell
+   cmake -S . -B build -A Win32
+   cmake --build build --config Release
+   copy build\Release\sui-plugin-legacy.dll test-server\plugins\
+   ```
+3. **Compile Fixtures into Server Layout**:
+   ```powershell
+   py scripts/compile_pawn.py --output-dir test-server
+   ```
+4. **Execute Regression Suites**:
+   ```powershell
+   py scripts/run_regression.py --platform windows-x86 --server-dir test-server
    ```
 
 ### Running Layer D (Packaging & Smoke Verification)
-1. **Build Deterministic Package**:
-   ```bash
-   SOURCE_DATE_EPOCH=1700000000 python3 scripts/package_release.py \
-     --binary build/sui-plugin-legacy.so \
-     --version 1.0.0 \
-     --output-dir dist
-   ```
-2. **Verify Package Contract (PK1–PK12)**:
-   ```bash
-   python3 tests/release_contract/check_release_package.py \
-     --dist dist \
-     --version 1.0.0
-   ```
-3. **Run Package-Only Deployment Smoke Test**:
-   ```bash
-   python3 tests/release_contract/run_package_smoke.py \
-     --archive dist/sui-plugin-1.0.0-linux-x86.tar.gz
-   ```
+
+#### Linux:
+```bash
+SOURCE_DATE_EPOCH=1700000000 python3 scripts/package_release.py \
+  --binary build/sui-plugin-legacy.so \
+  --platform linux-x86 \
+  --version 1.1.0 \
+  --output-dir dist
+
+python3 tests/release_contract/check_release_package.py \
+  --dist dist \
+  --platform linux-x86 \
+  --version 1.1.0
+
+python3 tests/release_contract/run_package_smoke.py \
+  --platform linux-x86 \
+  --archive dist/sui-plugin-1.1.0-linux-x86.tar.gz
+```
+
+#### Windows:
+```powershell
+$env:SOURCE_DATE_EPOCH = "1700000000"
+py scripts/package_release.py `
+  --binary build\Release\sui-plugin-legacy.dll `
+  --platform windows-x86 `
+  --version 1.1.0 `
+  --output-dir dist
+
+py tests/release_contract/check_release_package.py `
+  --dist dist `
+  --platform windows-x86 `
+  --version 1.1.0
+
+py tests/release_contract/run_package_smoke.py `
+  --platform windows-x86 `
+  --archive dist/sui-plugin-1.1.0-windows-x86.zip
+```
 
 ---
 
 ## 5. GitHub Actions Continuous Integration
 
-The GitHub Actions workflow is defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). It triggers automatically on all pushes and pull requests across all branches, executing all four evidence layers in order:
+The GitHub Actions workflow is defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). It triggers automatically on all pushes and pull requests across all branches, executing two independent jobs:
 
-1. **Layer A**: Runs static contract checkers (`check_api_surface.py`, `check_source_surface.py`) against Python 3.11.
-2. **Layer B**: Installs `gcc-multilib`, builds 32-bit Release plugin, asserts ELF32 architecture and canonical exports, downloads Pawn compiler, and verifies 23 / 23 Pawn compilation.
-3. **Layer C**: Automatically provisions SA-MP server via `setup_test_server.py`, deploys compiled test fixtures and `sui-plugin-legacy.so`, and executes all 13 suites via `run_regression.py`, asserting 179 / 179 passing assertions.
+### Job 1: `linux-x86-gates` (`ubuntu-24.04`)
+1. **Layer A**: Runs static contract checkers (`check_api_surface.py`, `check_source_surface.py`) against Python 3.12.
+2. **Layer B**: Installs multilib GCC, builds 32-bit Release plugin, asserts ELF32 architecture and canonical exports via `readelf`/`nm`, downloads Pawn compiler, and verifies 23 / 23 Pawn compilation.
+3. **Layer C**: Provisions Linux SA-MP server via `setup_test_server.py --platform linux-x86`, deploys compiled test fixtures and `sui-plugin-legacy.so`, and executes all 13 suites via `run_regression.py --platform linux-x86`, asserting 179 / 179 passing assertions.
 4. **Layer D**: Packages deterministic distribution archives, verifies PK1–PK12 distribution contracts, and executes isolated deployment smoke test.
+
+### Job 2: `windows-x86-gates` (`windows-2022`)
+1. **Layer A**: Runs static contract checkers (`check_api_surface.py`, `check_source_surface.py`) against Python 3.12.
+2. **Layer B**: Configures MSVC Win32 (`-A Win32`, `/MT`), builds `sui-plugin-legacy.dll`, validates PE32 Intel 80386 architecture and exports via `tests/platform_contract/check_windows_binary.py`, audits static CRT via `dumpbin /dependents`, downloads Windows Pawn compiler, and verifies 23 / 23 Pawn compilation.
+3. **Layer C**: Provisions Win32 SA-MP server via `setup_test_server.py --platform windows-x86`, deploys compiled test fixtures and `sui-plugin-legacy.dll`, and executes all 13 suites via `run_regression.py --platform windows-x86`, asserting 179 / 179 passing assertions.
+4. **Layer D**: Packages deterministic Windows distribution archives, verifies PK1–PK12 distribution contracts, and executes isolated deployment smoke test.
 
 ---
 
-## 6. Verified Hosted CI Evidence
+## 6. Pre-Tag Verification & Release Gate Policy
 
-The CI pipeline architecture and automated gates are authoritatively verified on GitHub-hosted infrastructure (`ubuntu-24.04` runner).
-
-### Historical Phase Baseline Evidence (Phase 17 Verification)
-
-- **Repository:** `PanDbEar/sui-plugin`
-- **Workflow:** `SUI Continuous Integration` (`.github/workflows/ci.yml`)
-- **Run ID:** `35050496591`
-- **Job ID:** `104649586202`
-- **Verified Commit SHA:** `058540009ec941ae22aaf04b3e7b5f6f7837fde0`
-- **Runner Environment:** `ubuntu-24.04` (GitHub Actions hosted runner)
-- **Workflow Conclusion:** `success`
-- **SDK Submodule Pin:** Verified `a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5`
-
-### Release-Readiness & Pre-Tag Verification Policy
-
-Final pre-tag verification runs are executed on candidate branches (such as `release/v1.0.0-readiness`) and recorded authoritatively in the respective release-readiness reports and GitHub Actions run history, preventing circular commits. Every release candidate gate verifies:
-
-- **4-Layer Architecture (Layers A–D):**
-  - **Layer A (Static Contracts):**
-    - API Surface Contract: 7 / 7 PASS (20 C++ natives, 1 `SUI_RegisterGroup` stock helper)
-    - Source Surface Contract: 6 / 6 PASS (canonical 6 files in `src/`, 3 C++ translation units, 0 leaks, portable automation paths)
-  - **Layer B (Build & Compilation):**
-    - Architecture: ELF32, Intel 80386, `-m32`, DYN shared object file
-    - Canonical Exports: All 6 present (`Supports`, `Load`, `Unload`, `AmxLoad`, `AmxUnload`, `ProcessTick`)
-    - Pawn Compilation: 23 / 23 PASS (0 errors, 0 emitted warnings under `-w239` policy with pinned `pawn-lang/compiler` v3.10.10)
-  - **Layer C (Live Runtime Regression):**
-    - All 13 permanent suites executed on headless SA-MP 0.3.7-R2 server
-    - Assertion Total: 179 / 179 PASS (100% assertion coverage, zero regressions)
-  - **Layer D (Release Packaging & Smoke):**
-    - Release Package Contract: 12 / 12 PASS (PK1–PK12 structural and license checks)
-    - Package Deployment Smoke: PASS (isolated boundary boot, lifecycle execution, clean shutdown)
-    - Deterministic Package Reproducibility: 100% byte-for-byte identical archives with fixed `SOURCE_DATE_EPOCH`
-- **Cleanup:** `pkill -9 -f samp03svr` and `rm -rf test-server test-server-smoke` executed cleanly in `if: always()` step.
+All pre-tag release candidate gates must execute both `linux-x86-gates` and `windows-x86-gates` successfully, proving:
+- **Zero Regressions:** 179 / 179 PASS on Linux x86 AND 179 / 179 PASS on Windows x86.
+- **Contract Adherence:** 7 / 7 AP PASS, 6 / 6 RC PASS, 23 / 23 Pawn compilation PASS on both runners.
+- **Distribution Integrity:** 12 / 12 PK PASS and isolated deployment smoke PASS on both platforms.
+- **Cleanup Guarantee:** Servers and test harnesses terminated and purged cleanly in `always()` step on both platforms.

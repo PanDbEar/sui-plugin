@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Windows x86 Platform Port**: Official SA-MP 0.3.7-R2 Windows x86 (Win32 / 32-bit PE DLL) platform support (Phase 19).
+  - Target binary: `sui-plugin-legacy.dll` compiled using MSVC Win32 (x86).
+  - Enforced static C Runtime (`/MT`) via `MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"` to eliminate external MSVC runtime DLL dependencies (`MSVCP140.dll`, `VCRUNTIME140.dll`).
+  - Added module definition file `src/sui-plugin-legacy.def` declaring undecorated export entry points (`Supports`, `Load`, `Unload`, `AmxLoad`, `AmxUnload`, `ProcessTick`).
+  - Added permanent PE32 binary architecture & canonical export contract checker `tests/platform_contract/check_windows_binary.py`.
+  - Added Windows test server dynamic provisioning in `scripts/setup_test_server.py` with pinned SA-MP 0.3.7-R2 Win32 server archive and safe ZIP extraction.
+  - Added cross-platform regression execution support in `scripts/run_regression.py` (`samp-server.exe` lifecycle and process cleanup on Windows).
+  - Added Windows release packaging in `scripts/package_release.py` producing `sui-plugin-<version>-windows-x86.zip` and `.tar.gz`.
+  - Extended release contract checker `tests/release_contract/check_release_package.py` and smoke runner `tests/release_contract/run_package_smoke.py` to validate Windows release packages (12 / 12 PK checks PASS).
+  - Established dual-job CI architecture in `.github/workflows/ci.yml`: `linux-x86-gates` (on `ubuntu-24.04`) and `windows-x86-gates` (on `windows-2022`).
+
 ## [1.0.0] - 2026-09-16
 
 ### Fixed

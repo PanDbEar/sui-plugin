@@ -7,8 +7,11 @@ on:
     branches: [ "**" ]
 
 jobs:
-  ci-gates:
-    name: SUI Regression & Verification Gates
+  # =====================================================================
+  # JOB 1: Linux x86 (ELF32) Verification Gates
+  # =====================================================================
+  linux-x86-gates:
+    name: SUI Linux x86 Verification Gates
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
@@ -177,7 +180,7 @@ jobs:
       - name: Layer D — Upload CI Test Package Artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: sui-package-dry-run-0.0.0-test
+          name: sui-package-linux-x86-0.0.0-test
           path: |
             dist/sui-plugin-0.0.0-test-linux-x86.tar.gz
             dist/sui-plugin-0.0.0-test-linux-x86.zip
@@ -188,4 +191,195 @@ jobs:
         if: always()
         run: |
           pkill -9 -f samp03svr || true
+          rm -rf test-server test-server-smoke
+
+  # =====================================================================
+  # JOB 2: Windows x86 (Win32 PE32 DLL) Verification Gates
+  # =====================================================================
+  windows-x86-gates:
+    name: SUI Windows x86 Verification Gates
+    runs-on: windows-2022
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout Repository with Submodules
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          submodules: recursive
+
+      - name: Verify SDK Submodule Pin
+        run: |
+          set -euo pipefail
+          SUBMODULE_STATUS=$(git submodule status lib/samp-plugin-sdk)
+          echo "Submodule status: $SUBMODULE_STATUS"
+          if ! echo "$SUBMODULE_STATUS" | grep -q "a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5"; then
+            echo "ERROR: Submodule lib/samp-plugin-sdk is not pinned to a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5"
+            exit 1
+          fi
+          echo "SDK submodule pin verified: a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5"
+
+      - name: Set up Python 3
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.11"
+
+      # -----------------------------------------------------------------
+      # LAYER A: Static Repository Contract Gates
+      # -----------------------------------------------------------------
+      - name: Layer A — Verify Public API Surface Contract (SUI-010)
+        run: |
+          set -euo pipefail
+          python tests/api_contract/check_api_surface.py
+
+      - name: Layer A — Verify Source Surface & CMake Alignment (SUI-012)
+        run: |
+          set -euo pipefail
+          python tests/repo_contract/check_source_surface.py
+
+      # -----------------------------------------------------------------
+      # LAYER B: Build & Compilation Contract Gates
+      # -----------------------------------------------------------------
+      - name: Layer B — Configure & Build Release Plugin (MSVC Win32 /MT)
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -A Win32
+          cmake --build build --config Release
+
+      - name: Layer B — Verify Binary Architecture (PE32) & Canonical Exports
+        run: |
+          set -euo pipefail
+          python tests/platform_contract/check_windows_binary.py build/Release/sui-plugin-legacy.dll
+
+      - name: Layer B — Verify Canonical Exports via dumpbin
+        run: |
+          set -euo pipefail
+          DUMPBIN=$(vswhere.exe -latest -find "VC/Tools/MSVC/*/bin/Hostx64/x86/dumpbin.exe" | head -n 1)
+          echo "Using dumpbin: $DUMPBIN"
+          "$DUMPBIN" /exports build/Release/sui-plugin-legacy.dll
+          for sym in Supports Load Unload AmxLoad AmxUnload ProcessTick; do
+            if ! "$DUMPBIN" /exports build/Release/sui-plugin-legacy.dll | grep -E "[[:space:]]${sym}$"; then
+              echo "ERROR: Missing required canonical plugin export: ${sym}"
+              exit 1
+            fi
+            echo "Verified export: ${sym}"
+          done
+          echo "All 6 canonical SA-MP plugin exports verified present via dumpbin."
+
+      - name: Layer B — Audit Runtime Dependencies (/MT static CRT verification)
+        run: |
+          set -euo pipefail
+          DUMPBIN=$(vswhere.exe -latest -find "VC/Tools/MSVC/*/bin/Hostx64/x86/dumpbin.exe" | head -n 1)
+          "$DUMPBIN" /dependents build/Release/sui-plugin-legacy.dll > dependents.txt
+          cat dependents.txt
+          if grep -iE "msvcp|vcruntime" dependents.txt; then
+            echo "ERROR: Found dynamic MSVC CRT dependency! Plugin must be statically linked with /MT."
+            exit 1
+          fi
+          echo "Static CRT (/MT) verified: Zero dynamic MSVC runtime dependencies."
+
+      - name: Setup Pinned Windows Pawn Compiler & Standard Includes
+        run: |
+          set -euo pipefail
+          mkdir -p tools/pawn
+          PAWN_URL="https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-windows.zip"
+          PAWN_SHA256="14a94e93f0e05443752b9925d69f76c07db7970eaa4dfb175cde01c74451c2fe"
+          echo "Downloading Windows Pawn compiler from $PAWN_URL..."
+          curl -sSL "$PAWN_URL" -o pawnc.zip
+          echo "Verifying Pawn compiler SHA-256..."
+          echo "$PAWN_SHA256 *pawnc.zip" | sha256sum -c -
+          unzip -q pawnc.zip -d tools/pawn_tmp
+          cp -r tools/pawn_tmp/bin tools/pawn/
+          cp -r tools/pawn_tmp/include tools/pawn/ || true
+          rm -rf pawnc.zip tools/pawn_tmp
+
+          echo "Checking out pawn-stdlib at pinned commit e96507d9a6ddaae5bb0f3ec31479ba805aeff964..."
+          git clone https://github.com/pawn-lang/pawn-stdlib.git tools/pawn-stdlib
+          git -C tools/pawn-stdlib checkout e96507d9a6ddaae5bb0f3ec31479ba805aeff964
+
+          echo "Checking out samp-stdlib at pinned tag 0.3.7-R2-1-1 (commit 7b194986946f64e8c0a4d4223aafec704ffd6b88)..."
+          git clone https://github.com/pawn-lang/samp-stdlib.git tools/samp-stdlib
+          git -C tools/samp-stdlib checkout 7b194986946f64e8c0a4d4223aafec704ffd6b88
+
+      - name: Layer B — Verify Pawn Fixture Compilation (23 / 23 Scripts)
+        run: |
+          set -euo pipefail
+          python scripts/compile_pawn.py \
+            --compiler tools/pawn/bin/pawncc.exe \
+            --includes "tools/samp-stdlib,tools/pawn-stdlib" \
+            --check-only
+
+      # -----------------------------------------------------------------
+      # LAYER C: Live Runtime Regression Gates
+      # -----------------------------------------------------------------
+      - name: Setup Headless Windows SA-MP Server Environment
+        run: |
+          set -euo pipefail
+          python scripts/setup_test_server.py --platform windows-x86 --dest test-server
+
+      - name: Compile Runtime Test Fixtures into Server Layout
+        run: |
+          set -euo pipefail
+          python scripts/compile_pawn.py \
+            --compiler tools/pawn/bin/pawncc.exe \
+            --includes "tools/samp-stdlib,tools/pawn-stdlib" \
+            --output-dir test-server
+
+      - name: Deploy SUI Plugin into Server Environment
+        run: |
+          set -euo pipefail
+          cp build/Release/sui-plugin-legacy.dll test-server/plugins/sui-plugin-legacy.dll
+
+      - name: Layer C — Execute 13 Permanent Regression Suites (179 Assertions)
+        run: |
+          set -euo pipefail
+          python scripts/run_regression.py --platform windows-x86 --server-dir test-server
+
+      # -----------------------------------------------------------------
+      # LAYER D: Release Packaging & Distribution Contract Gates
+      # -----------------------------------------------------------------
+      - name: Layer D — Package Deterministic Release Distribution (0.0.0-test)
+        run: |
+          set -euo pipefail
+          SOURCE_DATE_EPOCH=1700000000 python scripts/package_release.py \
+            --platform windows-x86 \
+            --binary build/Release/sui-plugin-legacy.dll \
+            --version 0.0.0-test \
+            --output-dir dist
+
+      - name: Layer D — Verify Release Contract (PK1–PK12)
+        run: |
+          set -euo pipefail
+          python tests/release_contract/check_release_package.py \
+            --platform windows-x86 \
+            --dist dist \
+            --version 0.0.0-test
+
+      - name: Layer D — Execute Package Deployment Smoke Test (Isolated Boundary)
+        run: |
+          set -euo pipefail
+          python tests/release_contract/run_package_smoke.py \
+            --platform windows-x86 \
+            --archive dist/sui-plugin-0.0.0-test-windows-x86.zip \
+            --compiler tools/pawn/bin/pawncc.exe \
+            --stdlibs "tools/pawn-stdlib,tools/samp-stdlib" \
+            --server-dir test-server-smoke
+
+      - name: Layer D — Upload CI Test Package Artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sui-package-windows-x86-0.0.0-test
+          path: |
+            dist/sui-plugin-0.0.0-test-windows-x86.tar.gz
+            dist/sui-plugin-0.0.0-test-windows-x86.zip
+            dist/sui-plugin-0.0.0-test-SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Disposable Runtime Cleanup
+        if: always()
+        run: |
+          powershell -Command "Stop-Process -Name samp-server,samp-npc -Force -ErrorAction SilentlyContinue" || true
           rm -rf test-server test-server-smoke

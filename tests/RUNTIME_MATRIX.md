@@ -22,7 +22,7 @@ This document defines the authoritative configuration, script dependencies, fixt
 | **amx_unload_cleanup** | `owner_cleanup_gamemode` | `owner_cleanup_filterscript` | *(none)* | 14 | 14 / 14 PASS | Yes |
 | **callback_error_recovery** | `callback_error_gamemode` | `callback_error_filterscript` | *(none)* | 14 | 14 / 14 PASS | Yes |
 
-**Total Permanent Suite Pass Rate:** **179 / 179 executed runtime assertions passed across 13 permanent suites**
+**Total Permanent Suite Pass Rate:** **179 / 179 executed runtime assertions passed across 13 permanent suites** (verified with 100% parity and zero regressions on both Linux x86 ELF32 and Windows x86 PE32 platforms)
 
 ---
 
@@ -196,7 +196,7 @@ All tracked Pawn test fixtures must be compiled using the pinned CI compiler:
 - **Warning Policy:** `0 emitted warnings under the pinned CI warning policy (-w239)`
 
 Source surface requirements:
-- `src/` contains exactly six canonical source-surface files (`Core.cpp`, `Core.hpp`, `Natives.cpp`, `Natives.hpp`, `Utils.hpp`, `main.cpp`).
+- `src/` contains exactly seven canonical source-surface files (`Core.cpp`, `Core.hpp`, `main.cpp`, `Natives.cpp`, `Natives.hpp`, `sui-plugin-legacy.def`, `Utils.hpp`).
 - `src/` contains exactly three project .cpp translation units: `Core.cpp`, `Natives.cpp`, `main.cpp`.
 
 Never commit `.amx` binaries into the git repository.

@@ -213,6 +213,29 @@ def validate_canonical_exports(binary_path: Path) -> None:
     print(f"[OK] All 6 canonical plugin exports verified present: {CANONICAL_EXPORTS}")
 
 
+def validate_binary_pe(binary_path: Path) -> None:
+    """Validate binary is strictly PE32, Intel 386 DLL with all 6 canonical exports."""
+    if not binary_path.exists():
+        raise FileNotFoundError(f"Plugin binary not found: {binary_path}")
+
+    if binary_path.name != "sui-plugin-legacy.dll":
+        raise ValueError(
+            f"Plugin binary name must be 'sui-plugin-legacy.dll', got '{binary_path.name}'"
+        )
+
+    root = find_repo_root()
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+
+    from tests.platform_contract.check_windows_binary import validate_windows_pe_binary
+    ok, details = validate_windows_pe_binary(binary_path)
+    if not ok:
+        raise ValueError(f"Windows PE32 binary validation failed:\n" + "\n".join(details))
+
+    for line in details:
+        print(f"[OK] {line}")
+
+
 def assemble_package_tree(
     root: Path,
     staging_dir: Path,
@@ -221,14 +244,16 @@ def assemble_package_tree(
     git_commit: str,
     sdk_commit: str,
     epoch: int,
+    platform: str = "linux-x86",
 ) -> None:
     """Copies all allowlisted files into staging directory and creates metadata files."""
     staging_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. plugins/sui-plugin-legacy.so
+    # 1. plugins/sui-plugin-legacy.<ext>
     plugins_dir = staging_dir / "plugins"
     plugins_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(binary_path, plugins_dir / "sui-plugin-legacy.so")
+    plugin_name = "sui-plugin-legacy.dll" if platform == "windows-x86" else "sui-plugin-legacy.so"
+    shutil.copy2(binary_path, plugins_dir / plugin_name)
 
     # 2. pawno/include/sui.inc
     pawno_dir = staging_dir / "pawno" / "include"
@@ -269,11 +294,12 @@ def assemble_package_tree(
     shutil.copy2(lic_src, staging_dir / "LICENSE")
 
     # 7. BUILD_INFO.txt (deterministic fields only)
+    arch_str = "PE32 (Intel 386)" if platform == "windows-x86" else "ELF32 (Intel 80386)"
     build_info_content = (
         f"SUI Version: {version}\n"
         f"Git Commit: {git_commit}\n"
-        "Target: linux-x86\n"
-        "Architecture: ELF32 (Intel 80386)\n"
+        f"Target: {platform}\n"
+        f"Architecture: {arch_str}\n"
         f"SDK Commit: {sdk_commit}\n"
         f"Source Date Epoch: {epoch}\n"
     )
@@ -398,9 +424,15 @@ def main():
         description="SUI Deterministic Release Packager (SUI-015 - Draft Test Infrastructure)"
     )
     parser.add_argument(
+        "--platform",
+        choices=["linux-x86", "windows-x86"],
+        default=None,
+        help="Target platform (linux-x86 or windows-x86)",
+    )
+    parser.add_argument(
         "--binary",
-        default="build/sui-plugin-legacy.so",
-        help="Path to sui-plugin-legacy.so (default: build/sui-plugin-legacy.so)",
+        default=None,
+        help="Path to plugin binary (default: auto-detected based on platform)",
     )
     parser.add_argument(
         "--version",
@@ -436,12 +468,40 @@ def main():
     args = parser.parse_args()
 
     repo_root = find_repo_root()
-    binary_path = (repo_root / args.binary).resolve()
+
+    platform = args.platform
+    if not platform:
+        if args.binary and args.binary.endswith(".dll"):
+            platform = "windows-x86"
+        elif not args.binary and os.name == "nt":
+            platform = "windows-x86"
+        else:
+            platform = "linux-x86"
+
+    if args.binary:
+        binary_path = (repo_root / args.binary).resolve()
+    else:
+        if platform == "windows-x86":
+            candidates = [
+                repo_root / "build" / "Release" / "sui-plugin-legacy.dll",
+                repo_root / "build" / "sui-plugin-legacy.dll",
+                repo_root / "build" / "bin" / "Release" / "sui-plugin-legacy.dll",
+            ]
+            for cand in candidates:
+                if cand.exists():
+                    binary_path = cand.resolve()
+                    break
+            else:
+                binary_path = (repo_root / "build" / "Release" / "sui-plugin-legacy.dll").resolve()
+        else:
+            binary_path = (repo_root / "build" / "sui-plugin-legacy.so").resolve()
+
     output_dir = (repo_root / args.output_dir).resolve()
 
     print("==================================================")
     print(" SUI RELEASE PACKAGER (DRAFT CI TEST INFRASTRUCTURE)")
     print("==================================================")
+    print(f"Target Platform:   {platform}")
 
     # 1. Determine release version
     version = args.version.strip()
@@ -472,9 +532,12 @@ def main():
             epoch = get_git_timestamp(repo_root)
     print(f"Source Date Epoch: {epoch}")
 
-    # 4. Validate binary ELF32 and canonical exports
-    validate_binary_elf(binary_path)
-    validate_canonical_exports(binary_path)
+    # 4. Validate binary architecture and canonical exports
+    if platform == "windows-x86":
+        validate_binary_pe(binary_path)
+    else:
+        validate_binary_elf(binary_path)
+        validate_canonical_exports(binary_path)
 
     # 5. Prepare output and staging directories
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -492,11 +555,12 @@ def main():
         git_commit=git_commit,
         sdk_commit=sdk_commit,
         epoch=epoch,
+        platform=platform,
     )
 
     # 7. Generate archives
-    tar_filename = f"sui-plugin-{version}-linux-x86.tar.gz"
-    zip_filename = f"sui-plugin-{version}-linux-x86.zip"
+    tar_filename = f"sui-plugin-{version}-{platform}.tar.gz"
+    zip_filename = f"sui-plugin-{version}-{platform}.zip"
     tar_path = output_dir / tar_filename
     zip_path = output_dir / zip_filename
 

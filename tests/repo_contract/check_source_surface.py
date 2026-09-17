@@ -5,7 +5,7 @@ SUI Repository Contract Surface Checker (SUI-012)
 Performs static verification to guarantee:
 - RC1: All tracked .cpp in src/ are listed in CMake SOURCES.
 - RC2: No banned includes (Component.hpp, Compat.hpp, <sdk.hpp>) exist in src/ or tests/.
-- RC3: src/ contains exactly the canonical 6 files (Core.cpp, Core.hpp, main.cpp, Natives.cpp, Natives.hpp, Utils.hpp).
+- RC3: src/ contains exactly the canonical 7 files (Core.cpp, Core.hpp, main.cpp, Natives.cpp, Natives.hpp, Utils.hpp, sui-plugin-legacy.def).
 - RC4: All files listed in CMake SOURCES exist on disk.
 - RC5: Orphaned Component/Compat files are absent from src/ and git index.
 - RC6: Portable automation path contract: scripts/, .github/workflows/, tests/ contain 0 developer-specific path literals.
@@ -98,7 +98,7 @@ def main():
     else:
         print(f"[RC2] FAIL: Banned includes found: {banned_violations}")
 
-    # 3. RC3: src/ contains exactly the canonical 6 files
+    # 3. RC3: src/ contains exactly the canonical 7 files
     total_checks += 1
     expected_src_files = {
         "Core.cpp",
@@ -107,11 +107,12 @@ def main():
         "Natives.cpp",
         "Natives.hpp",
         "Utils.hpp",
+        "sui-plugin-legacy.def",
     }
     actual_src_files = set(f.name for f in src_dir.iterdir() if f.is_file())
     if actual_src_files == expected_src_files:
         checks_passed += 1
-        print(f"[RC3] PASS: src/ contains exactly the canonical 6 files: {sorted(list(expected_src_files))}")
+        print(f"[RC3] PASS: src/ contains exactly the canonical 7 files: {sorted(list(expected_src_files))}")
     else:
         extra = actual_src_files - expected_src_files
         missing = expected_src_files - actual_src_files

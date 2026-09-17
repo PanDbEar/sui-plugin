@@ -46,10 +46,13 @@ SUITES = [
     ("callback_error_recovery", "callback_error_gamemode", "callback_error_filterscript", 14, r"ALL CALLBACK ERROR RECOVERY TESTS PASSED"),
 ]
 
-def find_server_dir(explicit_dir: str = None):
+def find_server_dir(explicit_dir: str = None, platform: str = None):
+    is_windows = (platform == "windows-x86") or (platform is None and os.name == "nt")
+    bin_name = "samp-server.exe" if is_windows else "samp03svr"
+
     if explicit_dir:
         d = Path(explicit_dir).resolve()
-        if d.exists() and (d / "samp03svr").exists():
+        if d.exists() and (d / bin_name).exists():
             return d
         if d.exists():
             return d
@@ -57,7 +60,7 @@ def find_server_dir(explicit_dir: str = None):
     env_dir = os.environ.get("SAMP_SERVER_DIR")
     if env_dir:
         d = Path(env_dir).resolve()
-        if d.exists() and (d / "samp03svr").exists():
+        if d.exists() and (d / bin_name).exists():
             return d
 
     candidates = [
@@ -67,36 +70,64 @@ def find_server_dir(explicit_dir: str = None):
         Path("/srv/samp-server"),
     ]
     for c in candidates:
-        if c.exists() and (c / "samp03svr").exists():
+        if c.exists() and (c / bin_name).exists():
             return c
 
     return None
 
+def kill_server_process(proc, is_windows: bool):
+    if proc.poll() is None:
+        try:
+            proc.kill()
+            proc.wait(timeout=3)
+        except Exception:
+            pass
+    if is_windows:
+        try:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+        except Exception:
+            pass
+
+def cleanup_residual_processes(is_windows: bool):
+    if is_windows:
+        try:
+            subprocess.run(["taskkill", "/F", "/IM", "samp-server.exe", "/IM", "samp-npc.exe"], capture_output=True)
+        except Exception:
+            pass
+
 def main():
     parser = argparse.ArgumentParser(description="Run SUI permanent runtime regression suites on SA-MP server.")
-    parser.add_argument("--server-dir", dest="server_dir", help="Path to SA-MP server directory containing samp03svr")
-    parser.add_argument("--plugin", dest="plugin", help="Path to sui-plugin-legacy.so to install into server plugins/ directory")
+    parser.add_argument("--platform", choices=["linux-x86", "windows-x86"], default=None, help="Target platform (linux-x86 or windows-x86)")
+    parser.add_argument("--server-dir", dest="server_dir", help="Path to SA-MP server directory containing samp03svr / samp-server.exe")
+    parser.add_argument("--plugin", dest="plugin", help="Path to plugin binary to install into server plugins/ directory")
     parser.add_argument("--timeout", type=int, default=12, help="Per-suite timeout in seconds (default: 12)")
     parser.add_argument("--suite", dest="suite", help="Run a specific suite name only")
 
     args = parser.parse_args()
 
-    server_dir = find_server_dir(args.server_dir)
+    platform = args.platform or ("windows-x86" if os.name == "nt" else "linux-x86")
+    is_windows = (platform == "windows-x86")
+    server_bin_name = "samp-server.exe" if is_windows else "samp03svr"
+    plugin_name = "sui-plugin-legacy.dll" if is_windows else "sui-plugin-legacy.so"
+    cfg_plugin_entry = "sui-plugin-legacy" if is_windows else "sui-plugin-legacy.so"
+
+    server_dir = find_server_dir(args.server_dir, platform=platform)
     if not server_dir:
-        print("ERROR: SA-MP server directory containing samp03svr not found.")
+        print(f"ERROR: SA-MP server directory containing {server_bin_name} not found.")
         print("Please provide --server-dir <path> or set SAMP_SERVER_DIR environment variable.")
         return 2
 
-    server_bin = server_dir / "samp03svr"
+    server_bin = server_dir / server_bin_name
     if not server_bin.exists():
         print(f"ERROR: Server binary not found at: {server_bin}")
         return 2
 
-    # Ensure binary is executable
-    try:
-        os.chmod(server_bin, 0o755)
-    except Exception:
-        pass
+    # Ensure binary is executable (Linux)
+    if not is_windows:
+        try:
+            os.chmod(server_bin, 0o755)
+        except Exception:
+            pass
 
     # Copy plugin if specified
     if args.plugin:
@@ -106,18 +137,22 @@ def main():
             return 2
         plugins_dir = server_dir / "plugins"
         plugins_dir.mkdir(parents=True, exist_ok=True)
-        dest_plugin = plugins_dir / "sui-plugin-legacy.so"
+        dest_plugin = plugins_dir / plugin_name
         shutil.copy2(src_plugin, dest_plugin)
-        try:
-            os.chmod(dest_plugin, 0o755)
-        except Exception:
-            pass
+        if not is_windows:
+            try:
+                os.chmod(dest_plugin, 0o755)
+            except Exception:
+                pass
         print(f"[SETUP] Copied plugin {src_plugin.name} -> {dest_plugin}")
 
     # Verify plugin exists
-    plugin_file = server_dir / "plugins" / "sui-plugin-legacy.so"
+    plugin_file = server_dir / "plugins" / plugin_name
     if not plugin_file.exists():
         print(f"WARNING: Plugin not found at {plugin_file}. Server may fail to load SUI plugin.")
+
+    # Clean any residual processes before starting
+    cleanup_residual_processes(is_windows)
 
     # Ensure baseline server.cfg exists
     cfg_file = server_dir / "server.cfg"
@@ -132,7 +167,7 @@ def main():
                 "hostname SUI Regression Server\n"
                 "gamemode0 reentrancy_regression 1\n"
                 "filterscripts\n"
-                "plugins sui-plugin-legacy.so\n"
+                f"plugins {cfg_plugin_entry}\n"
                 "announce 0\n"
                 "chatlogging 0\n"
                 "weburl www.sa-mp.com\n"
@@ -189,9 +224,11 @@ def main():
             else:
                 cfg += "\nmaxnpc 10\n"
 
-            # Ensure plugins line contains sui-plugin-legacy.so
-            if not re.search(r"^plugins\s+.*sui-plugin-legacy", cfg, flags=re.MULTILINE):
-                cfg += "\nplugins sui-plugin-legacy.so\n"
+            # Ensure plugins line contains correct plugin entry
+            if re.search(r"^plugins\s+.*sui-plugin-legacy", cfg, flags=re.MULTILINE):
+                cfg = re.sub(r"^plugins\s+.*sui-plugin-legacy.*", f"plugins {cfg_plugin_entry}", cfg, flags=re.MULTILINE)
+            else:
+                cfg += f"\nplugins {cfg_plugin_entry}\n"
 
             with open("server.cfg", "w", encoding="utf-8") as f:
                 f.write(cfg)
@@ -203,8 +240,11 @@ def main():
                 except Exception:
                     pass
 
-            # Spawn samp03svr
-            proc = subprocess.Popen(["./samp03svr"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # Spawn server process
+            if is_windows:
+                proc = subprocess.Popen([str(server_bin)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                proc = subprocess.Popen(["./samp03svr"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
             if name == "callback_semantics":
                 suite_timeout = 4
@@ -230,9 +270,7 @@ def main():
                         pass
                 time.sleep(0.2)
 
-            if proc.poll() is None:
-                proc.kill()
-                proc.wait()
+            kill_server_process(proc, is_windows)
 
             # Re-read final server_log.txt
             if log_file.exists():
@@ -261,6 +299,7 @@ def main():
                         pass
 
     finally:
+        cleanup_residual_processes(is_windows)
         os.chdir(original_cwd)
 
     print("=" * 65)

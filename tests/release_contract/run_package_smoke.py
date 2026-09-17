@@ -21,6 +21,7 @@ import sys
 import tarfile
 import tempfile
 import time
+import zipfile
 from pathlib import Path
 
 
@@ -36,13 +37,19 @@ def find_repo_root() -> Path:
 def main():
     parser = argparse.ArgumentParser(description="Run SUI package deployment smoke test")
     parser.add_argument(
+        "--platform",
+        choices=["linux-x86", "windows-x86"],
+        default=None,
+        help="Target platform (linux-x86 or windows-x86)",
+    )
+    parser.add_argument(
         "--archive",
-        default="dist/sui-plugin-0.0.0-test-linux-x86.tar.gz",
-        help="Path to release tar.gz archive",
+        default="",
+        help="Path to release archive (.tar.gz or .zip)",
     )
     parser.add_argument(
         "--compiler",
-        default="tools/pawn/bin/pawncc",
+        default="",
         help="Path to pawncc compiler executable",
     )
     parser.add_argument(
@@ -58,21 +65,59 @@ def main():
     parser.add_argument(
         "--server-archive",
         default="",
-        help="Optional local path to samp037svr_R2-1.tar.gz",
+        help="Optional local path to server archive",
     )
     args = parser.parse_args()
 
     repo_root = find_repo_root()
-    archive_path = (repo_root / args.archive).resolve()
-    compiler_path = Path(args.compiler)
-    if not compiler_path.is_absolute():
-        compiler_path = (repo_root / compiler_path).resolve()
+
+    # Determine platform
+    platform = args.platform
+    if not platform:
+        if args.archive:
+            if "windows-x86" in args.archive:
+                platform = "windows-x86"
+            elif "linux-x86" in args.archive:
+                platform = "linux-x86"
+        if not platform:
+            platform = "windows-x86" if os.name == "nt" else "linux-x86"
+    is_windows = (platform == "windows-x86")
+
+    # Default archive if omitted
+    if args.archive:
+        archive_path = (repo_root / args.archive).resolve()
+    else:
+        ext = "zip" if is_windows else "tar.gz"
+        archive_path = (repo_root / f"dist/sui-plugin-0.0.0-test-{platform}.{ext}").resolve()
+
+    # Resolve compiler
+    if args.compiler:
+        compiler_path = Path(args.compiler)
+        if not compiler_path.is_absolute():
+            compiler_path = (repo_root / compiler_path).resolve()
+    else:
+        if is_windows:
+            which_pawn = shutil.which("pawncc.exe") or shutil.which("pawncc")
+            if which_pawn:
+                compiler_path = Path(which_pawn).resolve()
+            elif (repo_root / "tools" / "pawn" / "bin" / "pawncc.exe").exists():
+                compiler_path = (repo_root / "tools" / "pawn" / "bin" / "pawncc.exe").resolve()
+            elif (repo_root / "tools" / "pawn" / "pawncc.exe").exists():
+                compiler_path = (repo_root / "tools" / "pawn" / "pawncc.exe").resolve()
+            else:
+                compiler_path = (repo_root / "tools" / "pawn" / "bin" / "pawncc.exe").resolve()
+        else:
+            compiler_path = (repo_root / "tools" / "pawn" / "bin" / "pawncc").resolve()
+
     server_dir = (repo_root / args.server_dir).resolve()
     fixture_pwn = (repo_root / "tests" / "release_contract" / "package_smoke.pwn").resolve()
 
     print("==================================================")
     print(" SUI PACKAGE-ONLY DEPLOYMENT SMOKE TEST (SUI-015) ")
     print("==================================================")
+    print(f"Target Platform:   {platform}")
+    print(f"Package Archive:   {archive_path}")
+    print(f"Pawn Compiler:     {compiler_path}")
 
     if not archive_path.exists():
         print(f"[FAIL] Release archive not found: {archive_path}")
@@ -89,8 +134,12 @@ def main():
     # 1. Extract package into isolated temporary directory
     extract_temp = Path(tempfile.mkdtemp(prefix="sui_smoke_pkg_"))
     print(f"[EXTRACT] Extracting {archive_path.name} to {extract_temp}...")
-    with tarfile.open(archive_path, "r:gz") as tar:
-        tar.extractall(extract_temp)
+    if archive_path.name.endswith(".zip"):
+        with zipfile.ZipFile(archive_path, "r") as zf:
+            zf.extractall(extract_temp)
+    else:
+        with tarfile.open(archive_path, "r:gz") as tar:
+            tar.extractall(extract_temp)
 
     # Find extracted root (sui-plugin-<VERSION>)
     extracted_roots = [p for p in extract_temp.iterdir() if p.is_dir() and p.name.startswith("sui-plugin-")]
@@ -99,16 +148,17 @@ def main():
         shutil.rmtree(extract_temp, ignore_errors=True)
         sys.exit(1)
     pkg_root = extracted_roots[0]
-    pkg_so = pkg_root / "plugins" / "sui-plugin-legacy.so"
+    bin_name = "sui-plugin-legacy.dll" if is_windows else "sui-plugin-legacy.so"
+    pkg_bin = pkg_root / "plugins" / bin_name
     pkg_inc_dir = pkg_root / "pawno" / "include"
     pkg_inc_file = pkg_inc_dir / "sui.inc"
 
     print(f"[ISOLATION-CHECK] Extracted package root: {pkg_root.name}")
-    print(f"[ISOLATION-CHECK] Packaged plugin binary:  {pkg_so}")
+    print(f"[ISOLATION-CHECK] Packaged plugin binary:  {pkg_bin}")
     print(f"[ISOLATION-CHECK] Packaged Pawn include:   {pkg_inc_file}")
 
-    if not pkg_so.exists():
-        print(f"[FAIL] Missing packaged plugin binary: {pkg_so}")
+    if not pkg_bin.exists():
+        print(f"[FAIL] Missing packaged plugin binary: {pkg_bin}")
         shutil.rmtree(extract_temp, ignore_errors=True)
         sys.exit(1)
 
@@ -125,13 +175,13 @@ def main():
     setup_cmd = [
         sys.executable,
         str(repo_root / "scripts" / "setup_test_server.py"),
+        "--platform",
+        platform,
         "--dest",
         str(server_dir),
     ]
     if args.server_archive and Path(args.server_archive).exists():
         setup_cmd.extend(["--archive", str(Path(args.server_archive).resolve())])
-    elif (repo_root / "test-server" / "samp037svr_R2-1.tar.gz").exists():
-        setup_cmd.extend(["--archive", str(repo_root / "test-server" / "samp037svr_R2-1.tar.gz")])
 
     setup_res = subprocess.run(setup_cmd, capture_output=True, text=True)
     if setup_res.returncode != 0:
@@ -139,19 +189,17 @@ def main():
         shutil.rmtree(extract_temp, ignore_errors=True)
         sys.exit(1)
 
-    # 3. Deploy ONLY the packaged .so binary into server/plugins
+    # 3. Deploy ONLY the packaged binary into server/plugins
     plugins_dest = server_dir / "plugins"
     plugins_dest.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(pkg_so, plugins_dest / "sui-plugin-legacy.so")
-    print(f"[DEPLOY] Deployed packaged binary ONLY: {plugins_dest / 'sui-plugin-legacy.so'}")
+    shutil.copy2(pkg_bin, plugins_dest / bin_name)
+    print(f"[DEPLOY] Deployed packaged binary ONLY: {plugins_dest / bin_name}")
 
     # 4. Compile smoke fixture with Pawn include isolation
     gamemodes_dir = server_dir / "gamemodes"
     gamemodes_dir.mkdir(parents=True, exist_ok=True)
     output_amx = gamemodes_dir / "package_smoke.amx"
 
-    # Build include arguments: ONLY extracted package pawno/include + stdlibs
-    # Strictly NO repository pawn/ included!
     compile_cmd = [
         str(compiler_path),
         str(fixture_pwn),
@@ -187,6 +235,7 @@ def main():
 
     # 5. Configure server.cfg
     cfg_file = server_dir / "server.cfg"
+    cfg_plugin_entry = "plugins sui-plugin-legacy\n" if is_windows else "plugins sui-plugin-legacy.so\n"
     cfg_content = (
         "echo Executing Server Config...\n"
         "lanmode 0\n"
@@ -195,7 +244,7 @@ def main():
         "port 7777\n"
         "hostname SUI Package Smoke Test\n"
         "gamemode0 package_smoke 1\n"
-        "plugins sui-plugin-legacy.so\n"
+        f"{cfg_plugin_entry}"
         "announce 0\n"
         "chatlogging 0\n"
         "weburl www.sa-mp.com\n"
@@ -210,8 +259,10 @@ def main():
     cfg_file.write_text(cfg_content, encoding="utf-8")
 
     # 6. Execute server
-    server_bin = server_dir / "samp03svr"
-    os.chmod(server_bin, 0o755)
+    server_bin_name = "samp-server.exe" if is_windows else "samp03svr"
+    server_bin = server_dir / server_bin_name
+    if not is_windows:
+        os.chmod(server_bin, 0o755)
     log_file = server_dir / "server_log.txt"
     if log_file.exists():
         log_file.unlink()
@@ -220,17 +271,23 @@ def main():
     proc = subprocess.Popen(
         [str(server_bin)],
         cwd=server_dir,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
 
     try:
         proc.wait(timeout=15)
     except subprocess.TimeoutExpired:
         print("[WARN] Server timed out; terminating process...")
-        proc.kill()
-        proc.wait()
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        if is_windows:
+            try:
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+                subprocess.run(["taskkill", "/F", "/IM", "samp-server.exe", "/IM", "samp-npc.exe"], capture_output=True)
+            except Exception:
+                pass
 
     # 7. Analyze log output
     if not log_file.exists():

@@ -1,8 +1,8 @@
 # SUI — Smart UI Virtualizer
 
 [![C++ Standard](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.wikipedia.org/wiki/C%2B%2B20)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20x86%20(32--bit)-orange.svg)](docs/BUILD.md)
-[![CI](https://img.shields.io/badge/CI-Automated%20Gates%20(4--Layer)-brightgreen.svg)](docs/CI.md)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20x86%20%7C%20Windows%20x86-orange.svg)](docs/BUILD.md)
+[![CI](https://img.shields.io/badge/CI-Automated%20Gates%20(Dual--Runner)-brightgreen.svg)](docs/CI.md)
 [![Version](https://img.shields.io/badge/Version-v1.0.0-brightgreen.svg)](docs/RELEASE.md)
 
 **SUI (Smart UI Virtualizer)** is an intelligent UI lifecycle manager and PlayerTextDraw virtualizer designed for SA-MP and open.mp legacy plugin environments.
@@ -15,8 +15,9 @@ SUI **does not hook or intercept native textdraw calls**. All rendering, allocat
 
 ## Target Platform & Compatibility
 
-- **Primary Target:** Legacy SA-MP/open.mp-compatible plugin interface on **Linux x86 / 32-bit**.
-- **Windows / MSVC:** Not currently verified.
+- **Primary Targets:** Legacy SA-MP/open.mp-compatible 32-bit plugin interface on:
+  - **Linux x86** (32-bit ELF, GCC multilib `-m32`, `sui-plugin-legacy.so`)
+  - **Windows x86** (32-bit PE DLL, MSVC Win32 `/MT`, `sui-plugin-legacy.dll`)
 - **Native open.mp Component (`IComponent`):** Not supported. SUI strictly targets the legacy SA-MP/open.mp 32-bit plugin interface. Experimental prototypes were audited and removed under SUI-012.
 - **64-bit:** Not supported. SA-MP and legacy open.mp plugin hosts run strictly as 32-bit processes.
 
@@ -224,26 +225,34 @@ sui-plugin/
     ├── main.cpp                  # Plugin entry points (Supports, Load, AmxLoad)
     ├── Core.hpp / Core.cpp       # Virtualizer state store & lifecycle engine
     ├── Natives.hpp / Natives.cpp # AMX native parameter dispatchers
-    └── Utils.hpp                 # Tick & string parameter helpers
+    ├── Utils.hpp                 # Tick & string parameter helpers
+    └── sui-plugin-legacy.def     # MSVC Win32 module export definitions
 ```
 
 ---
 
 ## Building & Installation
 
-See [Build Guide](docs/BUILD.md) for full Linux (multilib) build instructions and platform notes.
+See [Build Guide](docs/BUILD.md) for full platform-specific build instructions (Linux multilib & Windows MSVC Win32).
+
+### Linux (x86 32-bit ELF)
 
 ```bash
-mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . --config Release -j4
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release -j4
+```
+
+### Windows (x86 Win32 MSVC DLL)
+
+```cmd
+cmake -S . -B build -A Win32
+cmake --build build --config Release
 ```
 
 ### Package Installation (Prebuilt Release)
 
-For SA-MP 0.3.7-R2 Linux x86 servers:
-
-1. Download and extract the official release archive (`sui-plugin-<VERSION>-linux-x86.tar.gz` or `.zip`).
+#### On Linux Servers
+1. Download and extract the release archive (`sui-plugin-<VERSION>-linux-x86.tar.gz` or `.zip`).
 2. Copy `plugins/sui-plugin-legacy.so` to your server's `plugins/` directory:
    ```bash
    cp plugins/sui-plugin-legacy.so /path/to/server/plugins/
@@ -252,11 +261,21 @@ For SA-MP 0.3.7-R2 Linux x86 servers:
    ```text
    plugins sui-plugin-legacy.so
    ```
-4. Copy `pawno/include/sui.inc` into your Pawn compiler include directory:
-   ```bash
-   cp pawno/include/sui.inc /path/to/pawno/include/
+
+#### On Windows Servers
+1. Download and extract the release archive (`sui-plugin-<VERSION>-windows-x86.zip`).
+2. Copy `plugins/sui-plugin-legacy.dll` to your server's `plugins/` directory:
+   ```cmd
+   copy plugins\sui-plugin-legacy.dll C:\path\to\server\plugins\
    ```
-5. Include SUI in your gamemode or filterscript:
+3. Add `sui-plugin-legacy` to your `server.cfg` plugins directive:
+   ```text
+   plugins sui-plugin-legacy
+   ```
+
+#### Pawn Script Configuration (All Platforms)
+1. Copy `pawno/include/sui.inc` into your Pawn compiler include directory.
+2. Include SUI in your gamemode or filterscript:
    ```pawn
    #include <sui>
    ```

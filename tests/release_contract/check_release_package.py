@@ -140,8 +140,17 @@ def check_exports_in_file(so_path: Path) -> tuple[bool, list[str]]:
     return len(missing) == 0, missing
 
 
+def validate_pe_binary_path(dll_path: Path) -> tuple[bool, list[str]]:
+    repo_root = find_repo_root()
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from tests.platform_contract.check_windows_binary import validate_windows_pe_binary
+    return validate_windows_pe_binary(dll_path)
+
+
 def main():
     parser = argparse.ArgumentParser(description="SUI Release Package Contract Checker")
+    parser.add_argument("--platform", choices=["linux-x86", "windows-x86"], default=None, help="Target platform (linux-x86 or windows-x86)")
     parser.add_argument("--dist", default="dist", help="Path to dist directory (default: dist)")
     parser.add_argument("--version", default="", help="Expected package version (e.g. 0.0.0-test)")
     args = parser.parse_args()
@@ -153,23 +162,43 @@ def main():
     print(" SUI RELEASE PACKAGE CONTRACT CHECKER (SUI-015)   ")
     print("==================================================")
 
+    platform = args.platform
+    if not platform:
+        win_archives = list(dist_dir.glob("sui-plugin-*-windows-x86.zip")) + list(dist_dir.glob("sui-plugin-*-windows-x86.tar.gz"))
+        linux_archives = list(dist_dir.glob("sui-plugin-*-linux-x86.zip")) + list(dist_dir.glob("sui-plugin-*-linux-x86.tar.gz"))
+        if win_archives and not linux_archives:
+            platform = "windows-x86"
+        elif linux_archives and not win_archives:
+            platform = "linux-x86"
+        elif os.name == "nt":
+            platform = "windows-x86"
+        else:
+            platform = "linux-x86"
+
     version = args.version.strip()
     if not version:
-        for item in dist_dir.glob("sui-plugin-*-linux-x86.tar.gz"):
-            m = re.match(r"sui-plugin-(.+)-linux-x86\.tar\.gz", item.name)
+        for item in dist_dir.glob(f"sui-plugin-*-{platform}.tar.gz"):
+            m = re.match(rf"sui-plugin-(.+)-{platform}\.tar\.gz", item.name)
             if m:
                 version = m.group(1)
                 break
+        if not version:
+            for item in dist_dir.glob(f"sui-plugin-*-{platform}.zip"):
+                m = re.match(rf"sui-plugin-(.+)-{platform}\.zip", item.name)
+                if m:
+                    version = m.group(1)
+                    break
     if not version:
         print("[FAIL] Could not determine package version. Please supply --version.")
         sys.exit(1)
 
-    print(f"Checking package version: {version}")
-    print(f"Distribution directory:   {dist_dir}")
+    print(f"Checking package version:  {version}")
+    print(f"Target platform:           {platform}")
+    print(f"Distribution directory:    {dist_dir}")
 
     package_root_name = f"sui-plugin-{version}"
-    tar_name = f"sui-plugin-{version}-linux-x86.tar.gz"
-    zip_name = f"sui-plugin-{version}-linux-x86.zip"
+    tar_name = f"sui-plugin-{version}-{platform}.tar.gz"
+    zip_name = f"sui-plugin-{version}-{platform}.zip"
     outer_manifest_name = f"sui-plugin-{version}-SHA256SUMS.txt"
 
     tar_path = dist_dir / tar_name
@@ -223,8 +252,9 @@ def main():
     # PK3: Archive root and allowlisted file set match exactly
     # -------------------------------------------------------------
     total_checks += 1
+    expected_binary = "plugins/sui-plugin-legacy.dll" if platform == "windows-x86" else "plugins/sui-plugin-legacy.so"
     expected_relative_files = [
-        "plugins/sui-plugin-legacy.so",
+        expected_binary,
         "pawno/include/sui.inc",
         "examples/factory_login_example.pwn",
         "docs/API_REFERENCE.md",
@@ -260,6 +290,7 @@ def main():
     total_checks += 1
     forbidden_found = []
     all_members = set(tar_members + zip_members)
+    forbidden_platform_exts = ["sui-plugin-legacy.so"] if platform == "windows-x86" else ["sui-plugin-legacy.dll"]
     for m in all_members:
         for fsub in FORBIDDEN_SUBSTRINGS:
             if fsub in m:
@@ -267,6 +298,9 @@ def main():
         for fext in FORBIDDEN_EXTENSIONS:
             if m.endswith(fext) and not m.endswith("/sui.inc") and not m.endswith(".pwn"):
                 forbidden_found.append(f"{m} (matched forbidden extension '{fext}')")
+        for fplat in forbidden_platform_exts:
+            if m.endswith(fplat):
+                forbidden_found.append(f"{m} (matched forbidden cross-platform file '{fplat}')")
 
     if not forbidden_found:
         passed_checks += 1
@@ -275,30 +309,39 @@ def main():
         print(f"[PK4] FAIL: Forbidden items detected: {forbidden_found}")
 
     # -------------------------------------------------------------
-    # PK5: Binary Architecture (ELF32 Intel 80386 DYN)
+    # PK5: Binary Architecture
     # -------------------------------------------------------------
     total_checks += 1
     pk5_pass = False
-    so_rel_path = f"{package_root_name}/plugins/sui-plugin-legacy.so"
+    bin_name = "sui-plugin-legacy.dll" if platform == "windows-x86" else "sui-plugin-legacy.so"
+    bin_rel_path = f"{package_root_name}/plugins/{bin_name}"
     temp_dir = tempfile.mkdtemp(prefix="sui_check_pkg_")
-    extracted_so = Path(temp_dir) / "sui-plugin-legacy.so"
+    extracted_bin = Path(temp_dir) / bin_name
 
     try:
         with tarfile.open(tar_path, "r:gz") as tar:
-            fobj = tar.extractfile(so_rel_path)
+            fobj = tar.extractfile(bin_rel_path)
             if fobj:
-                so_bytes = fobj.read()
-                extracted_so.write_bytes(so_bytes)
-                ok, msg = validate_elf_header(so_bytes)
-                if ok:
-                    pk5_pass = True
-                    print(f"[PK5] PASS: Packaged .so binary verified: {msg}")
+                bin_bytes = fobj.read()
+                extracted_bin.write_bytes(bin_bytes)
+                if platform == "windows-x86":
+                    ok, details = validate_pe_binary_path(extracted_bin)
+                    if ok:
+                        pk5_pass = True
+                        print("[PK5] PASS: Packaged .dll binary verified: PE32 Intel 386 DLL")
+                    else:
+                        print(f"[PK5] FAIL: Packaged .dll binary validation failed: {details}")
                 else:
-                    print(f"[PK5] FAIL: Packaged .so binary validation failed: {msg}")
+                    ok, msg = validate_elf_header(bin_bytes)
+                    if ok:
+                        pk5_pass = True
+                        print(f"[PK5] PASS: Packaged .so binary verified: {msg}")
+                    else:
+                        print(f"[PK5] FAIL: Packaged .so binary validation failed: {msg}")
             else:
-                print(f"[PK5] FAIL: Could not extract {so_rel_path} from tar")
+                print(f"[PK5] FAIL: Could not extract {bin_rel_path} from tar")
     except Exception as e:
-        print(f"[PK5] FAIL: Exception verifying binary ELF header: {e}")
+        print(f"[PK5] FAIL: Exception verifying binary header: {e}")
 
     if pk5_pass:
         passed_checks += 1
@@ -307,15 +350,23 @@ def main():
     # PK6: Canonical Plugin Exports
     # -------------------------------------------------------------
     total_checks += 1
-    if pk5_pass and extracted_so.exists():
-        ok, missing = check_exports_in_file(extracted_so)
-        if ok:
-            passed_checks += 1
-            print(f"[PK6] PASS: All 6 canonical plugin exports verified present in packaged .so: {CANONICAL_EXPORTS}")
+    if pk5_pass and extracted_bin.exists():
+        if platform == "windows-x86":
+            ok, details = validate_pe_binary_path(extracted_bin)
+            if ok:
+                passed_checks += 1
+                print(f"[PK6] PASS: All 6 canonical plugin exports verified present in packaged .dll: {CANONICAL_EXPORTS}")
+            else:
+                print(f"[PK6] FAIL: Missing canonical exports in packaged .dll: {details}")
         else:
-            print(f"[PK6] FAIL: Missing canonical exports in packaged .so: {missing}")
+            ok, missing = check_exports_in_file(extracted_bin)
+            if ok:
+                passed_checks += 1
+                print(f"[PK6] PASS: All 6 canonical plugin exports verified present in packaged .so: {CANONICAL_EXPORTS}")
+            else:
+                print(f"[PK6] FAIL: Missing canonical exports in packaged .so: {missing}")
     else:
-        print("[PK6] FAIL: Cannot inspect exports; .so extraction failed")
+        print(f"[PK6] FAIL: Cannot inspect exports; {bin_name} extraction failed")
 
     # -------------------------------------------------------------
     # PK7: Public Include Integrity (Byte-for-byte match with pawn/sui.inc)
@@ -476,15 +527,17 @@ def main():
                 print("[PK11] FAIL: BUILD_INFO.txt missing from tar archive")
             else:
                 b_text = b_fobj.read().decode("utf-8")
+                expected_target_str = f"Target: {platform}"
+                expected_arch_str = "Architecture: PE32 (Intel 386)" if platform == "windows-x86" else "Architecture: ELF32 (Intel 80386)"
                 if f"SUI Version: {version}" not in b_text:
                     pk11_pass = False
                     print(f"[PK11] FAIL: BUILD_INFO.txt does not contain expected SUI Version {version}")
-                if "Target: linux-x86" not in b_text:
+                if expected_target_str not in b_text:
                     pk11_pass = False
-                    print("[PK11] FAIL: BUILD_INFO.txt missing target linux-x86")
-                if "Architecture: ELF32 (Intel 80386)" not in b_text:
+                    print(f"[PK11] FAIL: BUILD_INFO.txt missing target '{expected_target_str}'")
+                if expected_arch_str not in b_text:
                     pk11_pass = False
-                    print("[PK11] FAIL: BUILD_INFO.txt missing architecture specification")
+                    print(f"[PK11] FAIL: BUILD_INFO.txt missing architecture specification '{expected_arch_str}'")
                 if "SDK Commit: a5ce36a9b6ebbea6ad36705603f653bf3d4f41c5" not in b_text:
                     pk11_pass = False
                     print("[PK11] FAIL: BUILD_INFO.txt SDK commit mismatch")
